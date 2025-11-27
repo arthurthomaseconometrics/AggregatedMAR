@@ -11,8 +11,8 @@ Estimated runtime: ~30-60 minutes on a modern multi-core CPU
 """
 
 import sys
-sys.path.append('/Users/arthurthomas/Library/CloudStorage/Dropbox/AggregatedMAR/code Python_arthur/subsampling/')
-sys.path.append('/Users/arthurthomas/Library/CloudStorage/Dropbox/AggregatedMAR/code Python_arthur/subsampling/outputs')
+sys.path.append('AggregatedMAR')
+sys.path.append('AggregatedMAR/outputs/')
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -119,7 +119,7 @@ for idx, param_name in enumerate(analyzer.param_names):
     z_param = z_param[np.isfinite(z_param)]
     plot_results['scaled_deviations'][param_name] = z_param.tolist()
 
-analyzer.plot_diagnostics(plot_results, save_path='/Users/arthurthomas/Library/CloudStorage/Dropbox/AggregatedMAR/code Python_arthur/subsampling/outputs/step1_diagnostics.png')
+analyzer.plot_diagnostics(plot_results, save_path='AggregatedMAR/outputs/step1_diagnostics.png')
 print("✓ Diagnostic plots saved to: /outputs/step1_diagnostics.png")
 
 
@@ -151,7 +151,7 @@ if run_convergence == 'y':
         results_conv, summaries_conv = convergence_study(
             sample_sizes=[250, 500, 1000, 2000],  # Reduced for demo
             M=50,  # Reduced for demo (use 500 for publication)
-            save_dir='/Users/arthurthomas/Library/CloudStorage/Dropbox/AggregatedMAR/code Python_arthur/subsampling/outputs',
+            save_dir='AggregatedMAR/outputs',
             n_jobs=-1
         )
         

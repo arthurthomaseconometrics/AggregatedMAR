@@ -11,7 +11,7 @@ Usage:
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
-sys.path.append('/Users/arthurthomas/Library/CloudStorage/Dropbox/AggregatedMAR/code Python_arthur/subsampling/')
+sys.path.append('AggregatedMAR')
 from subsampling_analysis import SubsamplingAnalysis
 
 def quick_demo():
@@ -88,7 +88,7 @@ def quick_demo():
         plot_results['scaled_deviations'][param_name] = z_param.tolist()
     
     # Create plots
-    analyzer.plot_diagnostics(plot_results, save_path='/Users/arthurthomas/Library/CloudStorage/Dropbox/AggregatedMAR/code Python_arthur/subsampling/demo_diagnostics.png')
+    analyzer.plot_diagnostics(plot_results, save_path='AggregatedMAR/outputs/demo_diagnostics.png')
     
     print("\n" + "="*70)
     print("DEMONSTRATION COMPLETED")
@@ -118,7 +118,7 @@ def mini_convergence_demo():
     results, summaries = convergence_study(
         sample_sizes=[250, 500],  # Just two sample sizes
         M=50,  # Reduced number of replications
-        save_dir='/Users/arthurthomas/Library/CloudStorage/Dropbox/AggregatedMAR/code Python_arthur/subsampling/outputs/',
+        save_dir='AggregatedMAR/outputs',
         n_jobs=-1
     )
     
