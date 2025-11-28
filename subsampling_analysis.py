@@ -22,7 +22,7 @@ warnings.filterwarnings('ignore')
 
 # Import the stable mixture class
 import sys
-sys.path.append('/Users/arthurthomas/Library/CloudStorage/Dropbox/AggregatedMAR/code Python_arthur/subsampling/')
+#sys.path.append('AggregatedMAR/')
 from stablemixture import StableMixtureDeconvolution
 
 
@@ -468,7 +468,7 @@ class SubsamplingAnalysis:
 
 def convergence_study(sample_sizes: List[int] = [250, 500, 1000],
                      M: int = 100,
-                     save_dir: str = '/Users/arthurthomas/Library/CloudStorage/Dropbox/AggregatedMAR/code Python_arthur/subsampling/outputs',
+                     save_dir: str = 'AggregatedMAR/outputs',
                      n_jobs: int = -1):
     """
     Perform convergence study across multiple sample sizes.
@@ -601,7 +601,7 @@ if __name__ == "__main__":
     import os
     
     # Create output directory if it doesn't exist
-    output_dir = 'Users/arthurthomas/Library/CloudStorage/Dropbox/AggregatedMAR/code Python_arthur/subsampling/'
+    output_dir = '/outputs/'
     os.makedirs(output_dir, exist_ok=True)
     
     # Run convergence study with multiple sample sizes
