@@ -119,8 +119,8 @@ for idx, param_name in enumerate(analyzer.param_names):
     z_param = z_param[np.isfinite(z_param)]
     plot_results['scaled_deviations'][param_name] = z_param.tolist()
 
-analyzer.plot_diagnostics(plot_results, save_path='AggregatedMAR/outputs/step1_diagnostics.png')
-analyzer.plot_diagnostics(plot_results, save_path='AggregatedMAR/outputs/step1_diagnostics.png')
+analyzer.plot_diagnostics(plot_results, save_path='/outputs/step1_diagnostics.png')
+analyzer.plot_diagnostics(plot_results, save_path='/outputs/step1_diagnostics.png')
 print("✓ Diagnostic plots saved to: /outputs/step1_diagnostics.png")
 
 
@@ -137,7 +137,7 @@ print("  - For demonstration: M=50 replications, 2 sample sizes (~30-60 min)")
 print("  - For publication: M=500 replications, 4 sample sizes (~10-20 hours)")
 
 # Ask user if they want to run convergence study
-run_convergence = 'y'#input("\nRun convergence study? (y/n): ").lower().strip()
+run_convergence = 'y'  #input("\nRun convergence study? (y/n): ").lower().strip()
 
 if run_convergence == 'y':
     print("\nStarting convergence study...")
