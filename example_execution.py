@@ -136,7 +136,8 @@ print("  - For demonstration: M=50 replications, 2 sample sizes (~30-60 min)")
 print("  - For publication: M=500 replications, 4 sample sizes (~10-20 hours)")
 
 # Ask user if they want to run convergence study
-run_convergence = 'y'  #input("\nRun convergence study? (y/n): ").lower().strip()
+run_convergence = 'y'  
+#input("\nRun convergence study? (y/n): ").lower().strip()
 
 if run_convergence == 'y':
     print("\nStarting convergence study...")
