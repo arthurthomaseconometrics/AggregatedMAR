@@ -120,6 +120,7 @@ for idx, param_name in enumerate(analyzer.param_names):
     plot_results['scaled_deviations'][param_name] = z_param.tolist()
 
 analyzer.plot_diagnostics(plot_results, save_path='AggregatedMAR/outputs/step1_diagnostics.png')
+analyzer.plot_diagnostics(plot_results, save_path='AggregatedMAR/outputs/step1_diagnostics.png')
 print("✓ Diagnostic plots saved to: /outputs/step1_diagnostics.png")
 
 

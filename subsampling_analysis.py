@@ -469,6 +469,7 @@ class SubsamplingAnalysis:
 def convergence_study(sample_sizes: List[int] = [250, 500, 1000],
                      M: int = 100,
                      save_dir: str = 'AggregatedMAR/outputs',
+                     save_dir: str = 'AggregatedMAR/outputs',
                      n_jobs: int = -1):
     """
     Perform convergence study across multiple sample sizes.
@@ -621,4 +622,3 @@ if __name__ == "__main__":
     print("\nFiles generated:")
     print(f"  - diagnostics_n*.png: Diagnostic plots for each sample size")
     print(f"  - convergence_plot.png: Convergence across sample sizes")
-    print(f"  - summary_n*.csv: Summary tables for each sample size")

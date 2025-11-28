@@ -89,6 +89,7 @@ def quick_demo():
     
     # Create plots
     analyzer.plot_diagnostics(plot_results, save_path='AggregatedMAR/outputs/demo_diagnostics.png')
+    analyzer.plot_diagnostics(plot_results, save_path='AggregatedMAR/outputs/demo_diagnostics.png')
     
     print("\n" + "="*70)
     print("DEMONSTRATION COMPLETED")
