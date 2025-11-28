@@ -119,9 +119,8 @@ for idx, param_name in enumerate(analyzer.param_names):
     z_param = z_param[np.isfinite(z_param)]
     plot_results['scaled_deviations'][param_name] = z_param.tolist()
 
-analyzer.plot_diagnostics(plot_results, save_path='/outputs/step1_diagnostics.png')
-analyzer.plot_diagnostics(plot_results, save_path='/outputs/step1_diagnostics.png')
-print("✓ Diagnostic plots saved to: /outputs/step1_diagnostics.png")
+analyzer.plot_diagnostics(plot_results, save_path='step1_diagnostics.png')
+print("✓ Diagnostic plots saved to: step1_diagnostics.png")
 
 
 # ==============================================================================
@@ -152,7 +151,7 @@ if run_convergence == 'y':
         results_conv, summaries_conv = convergence_study(
             sample_sizes=[500],  # Reduced for demo
             M=500,  # Reduced for demo (use 500 for publication)
-            save_dir='/outputs/',
+            save_dir='',
             n_jobs=-1
         )
         
@@ -221,7 +220,7 @@ print("   - Consider model misspecification if issues persist")
 print("\n" + "="*80)
 print("ANALYSIS COMPLETE")
 print("="*80)
-print("\nAll results saved to: /outputs/")
+print("\nAll results saved to: ")
 print("\nFiles generated:")
 print("  - step1_diagnostics.png: Diagnostic plots from Step 1")
 if run_convergence == 'y':

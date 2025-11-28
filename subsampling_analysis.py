@@ -468,7 +468,7 @@ class SubsamplingAnalysis:
 
 def convergence_study(sample_sizes: List[int] = [250, 500, 1000],
                      M: int = 100,
-                     save_dir: str = '/outputs',
+                     save_dir: str = '',
                      n_jobs: int = -1):
     """
     Perform convergence study across multiple sample sizes.
@@ -601,8 +601,8 @@ if __name__ == "__main__":
     import os
     
     # Create output directory if it doesn't exist
-    output_dir = '/outputs/'
-    os.makedirs(output_dir, exist_ok=True)
+    output_dir = ''
+    #os.makedirs(output_dir, exist_ok=True)
     
     # Run convergence study with multiple sample sizes
     # Note: For full replication, use M=500 and sample_sizes=[250, 500, 1000, 2000]

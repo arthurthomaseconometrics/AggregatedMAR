@@ -88,8 +88,8 @@ def quick_demo():
         plot_results['scaled_deviations'][param_name] = z_param.tolist()
     
     # Create plots
-    analyzer.plot_diagnostics(plot_results, save_path='AggregatedMAR/outputs/demo_diagnostics.png')
-    analyzer.plot_diagnostics(plot_results, save_path='AggregatedMAR/outputs/demo_diagnostics.png')
+    analyzer.plot_diagnostics(plot_results, save_path='demo_diagnostics.png')
+   
     
     print("\n" + "="*70)
     print("DEMONSTRATION COMPLETED")
@@ -99,7 +99,7 @@ def quick_demo():
     print("  - Mean close to 0: No systematic bias in subsample estimates")
     print("  - Skewness close to 0: Symmetric distribution")
     print("  - Excess kurtosis close to 0: Tails similar to normal distribution")
-    print("\nDiagnostic plots saved to: /outputs/demo_diagnostics.png")
+    print("\nDiagnostic plots saved to: demo_diagnostics.png")
 
 
 def mini_convergence_demo():
@@ -119,7 +119,7 @@ def mini_convergence_demo():
     results, summaries = convergence_study(
         sample_sizes=[250, 500],  # Just two sample sizes
         M=50,  # Reduced number of replications
-        save_dir='/outputs',
+        save_dir='',
         n_jobs=-1
     )
     
