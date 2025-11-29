@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy import stats
-from typing import List, Dict, Optional
+from typing import Tuple,List, Dict, Optional
 from joblib import Parallel, delayed
 from stablemixture import StableMixtureDeconvolution
 import warnings
