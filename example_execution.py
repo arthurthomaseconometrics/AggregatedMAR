@@ -154,7 +154,7 @@ if run_convergence == 'y':
         #   M=500
         results_conv, summaries_conv = convergence_study(
             sample_sizes=[500, 1000, 2000],  # Reduced for demo
-            M=2,  # Reduced for demo (use 500 for publication)
+            M=500,  # Reduced for demo (use 500 for publication)
             save_dir=output_dir,  # Use output_dir instead of '/outputs'
             n_jobs=-1
         )
