@@ -10,10 +10,9 @@ results, increase M (number of MC replications) and add more sample sizes.
 Estimated runtime: ~30-60 minutes on a modern multi-core CPU
 """
 
-import sys
+
 import os
 import numpy as np
-import matplotlib.pyplot as plt
 from subsampling_analysis import SubsamplingAnalysis, convergence_study
 
 # ==============================================================================
@@ -75,19 +74,19 @@ for idx, param_name in enumerate(analyzer.param_names):
     
     test_res = analyzer.test_normality(results['scaled_deviations'], idx)
     
-    print(f"  Sample moments of scaled deviations:")
+    print("  Sample moments of scaled deviations:")
     print(f"    Mean:            {test_res['mean']:8.4f}  (expected: 0.0000)")
     print(f"    Std Dev:         {test_res['std']:8.4f}")
     print(f"    Skewness:        {test_res['skewness']:8.4f}  (expected: 0.0000)")
     print(f"    Excess Kurtosis: {test_res['kurtosis']:8.4f}  (expected: 0.0000)")
     
-    print(f"\n  Normality test p-values:")
+    print("\n  Normality test p-values:")
     print(f"    Kolmogorov-Smirnov: {test_res['ks_pvalue']:.4f}")
     print(f"    Shapiro-Wilk:       {test_res['sw_pvalue']:.4f}")
     print(f"    Jarque-Bera:        {test_res['jb_pvalue']:.4f}")
     
     # Interpretation
-    print(f"\n  Interpretation (at 5% significance level):")
+    print("\n  Interpretation (at 5% significance level):")
     reject_count = sum([
         test_res['ks_pvalue'] < 0.05,
         test_res['sw_pvalue'] < 0.05,
@@ -95,13 +94,13 @@ for idx, param_name in enumerate(analyzer.param_names):
     ])
     
     if reject_count == 0:
-        print(f"    ✓ All tests accept normality (0/3 rejections)")
+        print("    ✓ All tests accept normality (0/3 rejections)")
     elif reject_count == 1:
-        print(f"    ~ Mixed evidence for normality (1/3 rejections)")
+        print("    ~ Mixed evidence for normality (1/3 rejections)")
     elif reject_count == 2:
-        print(f"    ⚠ Weak evidence against normality (2/3 rejections)")
+        print("    ⚠ Weak evidence against normality (2/3 rejections)")
     else:
-        print(f"    ✗ Strong evidence against normality (3/3 rejections)")
+        print("    ✗ Strong evidence against normality (3/3 rejections)")
 
 # Save diagnostic plots
 print("\n" + "="*80)
@@ -154,8 +153,8 @@ if run_convergence == 'y':
         #   sample_sizes=[250, 500, 1000, 2000]
         #   M=500
         results_conv, summaries_conv = convergence_study(
-            sample_sizes=[500],  # Reduced for demo
-            M=10,  # Reduced for demo (use 500 for publication)
+            sample_sizes=[500,1000,2000],  # Reduced for demo
+            M=2,  # Reduced for demo (use 500 for publication)
             save_dir=output_dir,  # Use output_dir instead of '/outputs'
             n_jobs=-1
         )
