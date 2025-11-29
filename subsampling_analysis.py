@@ -12,13 +12,12 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy import stats
-from stablemixture import StableMixtureDeconvolution
+from typing import List, Dict, Optional
 from joblib import Parallel, delayed
+from stablemixture import StableMixtureDeconvolution
 import warnings
 import os
 warnings.filterwarnings('ignore')
-
-# Import the stable mixture class
 
 
 class SubsamplingAnalysis:
@@ -33,7 +32,8 @@ class SubsamplingAnalysis:
     
     Attributes:
         num_components (int): Number of latent AR(1) components
-        true_params (tuple): True parameter values (rho_1, ..., rho_J, varsigma_1, ..., varsigma_J, alpha, beta)
+        true_params (tuple): True parameter values (rho_1, ..., rho_J, varsigma_1, ..., 
+        varsigma_J, alpha, beta)
         alpha (float): Tail index parameter
         beta (float): Asymmetry parameter
     """
@@ -75,8 +75,7 @@ class SubsamplingAnalysis:
         
         # Parameter names
         self.param_names = self.model.params_names
-        
-    
+
     def generate_data(self, n: int, seed: Optional[int] = None) -> np.ndarray:
         """
         Generate a sample from the stable AR(1) aggregate model.
@@ -90,7 +89,6 @@ class SubsamplingAnalysis:
         """
         Y, _ = self.model.generate(T=n, params=self.true_params, seed=seed)
         return Y
-    
     
     def estimate_subsample(self, 
                           Y_subsample: np.ndarray, 
@@ -131,7 +129,6 @@ class SubsamplingAnalysis:
             print(f"Warning: Subsample estimation failed with error: {e}")
             return tuple([np.nan] * len(self.param_names))
     
-    
     def subsample_analysis(self, 
                           Y: np.ndarray, 
                           b: Optional[int] = None,
@@ -161,7 +158,7 @@ class SubsamplingAnalysis:
         b = min(b, n - 10)
         
         print(f"\n{'='*60}")
-        print(f"Subsampling Analysis:")
+        print("Subsampling Analysis:")
         print(f"  Full sample size: n = {n}")
         print(f"  Subsample size: b = {b}")
         print(f"  Number of subsamples: N_b = {n - b + 1}")
@@ -199,7 +196,7 @@ class SubsamplingAnalysis:
         # Step 3: Compute scaled deviations
         scaled_deviations = np.sqrt(b) * (theta_subsamples - theta_n)
         
-        print(f"\nCompleted subsample analysis.")
+        print("\nCompleted subsample analysis.")
         print(f"  Valid subsamples: {len(theta_subsamples)}")
         
         return {
@@ -209,8 +206,7 @@ class SubsamplingAnalysis:
             'subsample_size': b,
             'n_valid': len(theta_subsamples)
         }
-    
-    
+     
     def test_normality(self, 
                       scaled_deviations: np.ndarray,
                       param_idx: int) -> Dict[str, float]:
@@ -276,7 +272,6 @@ class SubsamplingAnalysis:
             'jb_statistic': jb_stat,
             'jb_pvalue': jb_pval
         }
-    
     
     def monte_carlo_subsample(self,
                             n: int,
@@ -345,7 +340,6 @@ class SubsamplingAnalysis:
         }
         
         return aggregated_results
-    
     
     def plot_diagnostics(self, 
                         results: Dict,
@@ -421,8 +415,7 @@ class SubsamplingAnalysis:
             print(f"\nFigure saved to: {save_path}")
         
         plt.close()
-        
-        
+            
     def summarize_results(self, results: Dict) -> pd.DataFrame:
         """
         Create a summary table of test statistics across parameters.
@@ -486,13 +479,13 @@ def convergence_study(sample_sizes: List[int] = [250, 500, 1000],
     print("\n" + "="*70)
     print("CONVERGENCE STUDY: Asymptotic Normality Verification")
     print("="*70)
-    print(f"\nConfiguration:")
+    print("\nConfiguration:")
     print(f"  Sample sizes: {sample_sizes}")
     print(f"  MC replications per n: {M}")
     print(f"  Output directory: {save_dir}")
-    print(f"  Model: General alpha-stable AR(1) aggregates")
-    print(f"  True parameters: rho_1=0.8, rho_2=0.3, varsigma_1=0.7, varsigma_2=0.9")
-    print(f"                   alpha=1.5, beta=0")
+    print("  Model: General alpha-stable AR(1) aggregates")
+    print("  True parameters: rho_1=0.8, rho_2=0.3, varsigma_1=0.7, varsigma_2=0.9")
+    print("                   alpha=1.5, beta=0")
     print("="*70 + "\n")
     
     # Initialize analysis
@@ -629,4 +622,4 @@ if __name__ == "__main__":
     for n in [250, 500, 1000, 2000]:
         print(f"  - diagnostics_n{n}.png")
         print(f"  - summary_n{n}.csv")
-    print(f"  - convergence_plot.png")
+    print("  - convergence_plot.png")
