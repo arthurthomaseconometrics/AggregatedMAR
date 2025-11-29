@@ -1,5 +1,5 @@
 """
-Example Execution: Subsampling Analysis for Verifying Asymptotic Normality
+Example Execution: Subsampling Analysis for Verifying Asymptotic Normality - CORRECTED VERSION
 
 This script demonstrates a complete workflow for verifying the asymptotic 
 normality result of Proposition prop:tcl2 using subsampling methodology.
@@ -11,9 +11,7 @@ Estimated runtime: ~30-60 minutes on a modern multi-core CPU
 """
 
 import sys
-#sys.path.append('AggregatedMAR')
-#sys.path.append('AggregatedMAR/outputs/')
-
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 from subsampling_analysis import SubsamplingAnalysis, convergence_study
@@ -109,6 +107,10 @@ for idx, param_name in enumerate(analyzer.param_names):
 print("\n" + "="*80)
 print("Creating diagnostic plots...")
 
+# Create outputs directory if it doesn't exist
+output_dir = 'outputs'
+os.makedirs(output_dir, exist_ok=True)
+
 plot_results = {
     'param_names': analyzer.param_names,
     'scaled_deviations': {}
@@ -119,8 +121,9 @@ for idx, param_name in enumerate(analyzer.param_names):
     z_param = z_param[np.isfinite(z_param)]
     plot_results['scaled_deviations'][param_name] = z_param.tolist()
 
-analyzer.plot_diagnostics(plot_results, save_path='step1_diagnostics.png')
-print("✓ Diagnostic plots saved to: step1_diagnostics.png")
+step1_path = os.path.join(output_dir, 'step1_diagnostics.png')
+analyzer.plot_diagnostics(plot_results, save_path=step1_path)
+print(f"✓ Diagnostic plots saved to: {step1_path}")
 
 
 # ==============================================================================
@@ -136,8 +139,9 @@ print("  - For demonstration: M=50 replications, 2 sample sizes (~30-60 min)")
 print("  - For publication: M=500 replications, 4 sample sizes (~10-20 hours)")
 
 # Ask user if they want to run convergence study
-run_convergence = 'y'  
-#input("\nRun convergence study? (y/n): ").lower().strip()
+run_convergence = input("\nRun convergence study? (y/n): ").lower().strip()
+# Uncomment the line below for interactive mode:
+
 
 if run_convergence == 'y':
     print("\nStarting convergence study...")
@@ -151,8 +155,8 @@ if run_convergence == 'y':
         #   M=500
         results_conv, summaries_conv = convergence_study(
             sample_sizes=[500],  # Reduced for demo
-            M=500,  # Reduced for demo (use 500 for publication)
-            save_dir='',
+            M=10,  # Reduced for demo (use 500 for publication)
+            save_dir=output_dir,  # Use output_dir instead of '/outputs'
             n_jobs=-1
         )
         
@@ -160,9 +164,9 @@ if run_convergence == 'y':
         print("CONVERGENCE STUDY COMPLETED")
         print("="*80)
         print("\nKey results to examine:")
-        print("  1. convergence_plot.png - Shows improvement as n increases")
-        print("  2. summary_n*.csv - Detailed statistics for each sample size")
-        print("  3. diagnostics_n*.png - Visual diagnostics for each n")
+        print(f"  1. {output_dir}/convergence_plot.png - Shows improvement as n increases")
+        print(f"  2. {output_dir}/summary_n*.csv - Detailed statistics for each sample size")
+        print(f"  3. {output_dir}/diagnostics_n*.png - Visual diagnostics for each n")
         
         print("\nWhat to look for in the convergence plot:")
         print("  ✓ Mean converging to 0")
@@ -174,12 +178,14 @@ if run_convergence == 'y':
     except Exception as e:
         print(f"\n\nError in convergence study: {e}")
         print("Check the error message above for details.")
+        import traceback
+        traceback.print_exc()
         
 else:
     print("\nSkipping convergence study.")
     print("To run it later, execute:")
-    print("  from subsampling_analysis import convergence_study")
-    print("  convergence_study(sample_sizes=[250, 500, 1000], M=100)")
+    print("  from subsampling_analysis_fixed import convergence_study")
+    print("  convergence_study(sample_sizes=[250, 500, 1000], M=100, save_dir='outputs')")
 
 
 # ==============================================================================
@@ -221,17 +227,17 @@ print("   - Consider model misspecification if issues persist")
 print("\n" + "="*80)
 print("ANALYSIS COMPLETE")
 print("="*80)
-print("\nAll results saved to: ")
+print(f"\nAll results saved to: {output_dir}/")
 print("\nFiles generated:")
-print("  - step1_diagnostics.png: Diagnostic plots from Step 1")
+print(f"  - {output_dir}/step1_diagnostics.png: Diagnostic plots from Step 1")
 if run_convergence == 'y':
-    print("  - convergence_plot.png: Convergence visualization")
-    print("  - diagnostics_n*.png: Diagnostics for each sample size")
-    print("  - summary_n*.csv: Summary statistics tables")
+    print(f"  - {output_dir}/convergence_plot.png: Convergence visualization")
+    print(f"  - {output_dir}/diagnostics_n*.png: Diagnostics for each sample size")
+    print(f"  - {output_dir}/summary_n*.csv: Summary statistics tables")
 
 print("\n" + "="*80)
 print("For more information, see:")
 print("  - README.md: Comprehensive usage guide")
 print("  - subsampling_theory.tex: Mathematical foundations")
-print("  - subsampling_analysis.py: Implementation details")
+print("  - subsampling_analysis_fixed.py: Implementation details")
 print("="*80 + "\n")

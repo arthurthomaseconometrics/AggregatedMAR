@@ -1,10 +1,8 @@
 """
-Subsampling Analysis for MDE Estimator of Stable AR(1) Aggregates
+Subsampling Analysis for MDE Estimator of Stable AR(1) Aggregates - CORRECTED VERSION
 
 This module implements the subsampling methodology to verify the asymptotic 
-normality result stated in Proposition prop:tcl2 of the paper. The approach 
-estimates parameters on overlapping subsamples and analyzes the distribution 
-of scaled deviations to assess convergence to normality.
+normality result stated in Proposition prop:tcl2 of the paper.
 
 Author: Analysis for stable mixture deconvolution
 Date: 2025
@@ -18,11 +16,11 @@ from scipy import stats
 from typing import Tuple, List, Dict, Optional
 from joblib import Parallel, delayed
 import warnings
+import os
 warnings.filterwarnings('ignore')
 
 # Import the stable mixture class
 import sys
-#sys.path.append('AggregatedMAR/')
 from stablemixture import StableMixtureDeconvolution
 
 
@@ -185,8 +183,6 @@ class SubsamplingAnalysis:
         # Create subsamples (do not materialize all at once to save memory)
         def process_subsample(i):
             Y_sub = Y[i:i+b]
-            # Use independent initial guess for each subsample (not theta_n)
-            #init_guess = self.model.generate_initial_guess()
             return self.estimate_subsample(Y_sub, initial_guess=theta_n)
         
         # Parallel estimation of subsamples
@@ -364,6 +360,12 @@ class SubsamplingAnalysis:
             results: Results dictionary from monte_carlo_subsample()
             save_path: Path to save the figure (if None, displays only)
         """
+        # Create directory if needed
+        if save_path is not None:
+            save_dir = os.path.dirname(save_path)
+            if save_dir and not os.path.exists(save_dir):
+                os.makedirs(save_dir, exist_ok=True)
+        
         param_names = results['param_names']
         n_params = len(param_names)
         
@@ -421,7 +423,7 @@ class SubsamplingAnalysis:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             print(f"\nFigure saved to: {save_path}")
         
-        plt.show()
+        plt.close()
         
         
     def summarize_results(self, results: Dict) -> pd.DataFrame:
@@ -468,7 +470,7 @@ class SubsamplingAnalysis:
 
 def convergence_study(sample_sizes: List[int] = [250, 500, 1000],
                      M: int = 100,
-                     save_dir: str = '',
+                     save_dir: str = 'outputs',  # Changed default
                      n_jobs: int = -1):
     """
     Perform convergence study across multiple sample sizes.
@@ -476,18 +478,24 @@ def convergence_study(sample_sizes: List[int] = [250, 500, 1000],
     Args:
         sample_sizes: List of sample sizes to test
         M: Number of Monte Carlo replications per sample size
-        save_dir: Directory to save results
+        save_dir: Directory to save results (will be created if doesn't exist)
         n_jobs: Number of parallel jobs
     """
+    # Create save directory if it doesn't exist
+    if save_dir and not os.path.exists(save_dir):
+        os.makedirs(save_dir, exist_ok=True)
+        print(f"Created output directory: {save_dir}")
+    
     print("\n" + "="*70)
     print("CONVERGENCE STUDY: Asymptotic Normality Verification")
     print("="*70)
     print(f"\nConfiguration:")
     print(f"  Sample sizes: {sample_sizes}")
     print(f"  MC replications per n: {M}")
+    print(f"  Output directory: {save_dir}")
     print(f"  Model: General alpha-stable AR(1) aggregates")
     print(f"  True parameters: rho_1=0.8, rho_2=0.3, varsigma_1=0.7, varsigma_2=0.9")
-    print(f"                   alpha=1.5, beta=0.3")
+    print(f"                   alpha=1.5, beta=0")
     print("="*70 + "\n")
     
     # Initialize analysis
@@ -528,15 +536,16 @@ def convergence_study(sample_sizes: List[int] = [250, 500, 1000],
         print("="*70)
         
         # Create diagnostic plots
-        fig_path = f"{save_dir}/diagnostics_n{n}.png"
+        fig_path = os.path.join(save_dir, f"diagnostics_n{n}.png")
         analyzer.plot_diagnostics(results_n, save_path=fig_path)
     
     # Create convergence plot
-    create_convergence_plot(summary_tables, save_path=f"{save_dir}/convergence_plot.png")
+    conv_path = os.path.join(save_dir, "convergence_plot.png")
+    create_convergence_plot(summary_tables, save_path=conv_path)
     
     # Save summary tables to CSV
     for n, df in summary_tables.items():
-        csv_path = f"{save_dir}/summary_n{n}.csv"
+        csv_path = os.path.join(save_dir, f"summary_n{n}.csv")
         df.to_csv(csv_path, index=False)
         print(f"\nSummary table saved: {csv_path}")
     
@@ -552,6 +561,12 @@ def create_convergence_plot(summary_tables: Dict[int, pd.DataFrame],
         summary_tables: Dictionary mapping sample size to summary DataFrames
         save_path: Path to save the figure
     """
+    # Create directory if needed
+    if save_path is not None:
+        save_dir = os.path.dirname(save_path)
+        if save_dir and not os.path.exists(save_dir):
+            os.makedirs(save_dir, exist_ok=True)
+    
     sample_sizes = sorted(summary_tables.keys())
     param_names = summary_tables[sample_sizes[0]]['Parameter'].tolist()
     
@@ -590,34 +605,31 @@ def create_convergence_plot(summary_tables: Dict[int, pd.DataFrame],
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         print(f"\nConvergence plot saved to: {save_path}")
     
-    plt.show()
+    plt.close()
 
 
-# Main execution function
 if __name__ == "__main__":
     """
     Main execution: Run convergence study across multiple sample sizes.
     """
-    import os
-    
     # Create output directory if it doesn't exist
-    output_dir = ''
-    #os.makedirs(output_dir, exist_ok=True)
+    output_dir = 'outputs'
+    os.makedirs(output_dir, exist_ok=True)
     
     # Run convergence study with multiple sample sizes
-    # Note: For full replication, use M=500 and sample_sizes=[250, 500, 1000, 2000]
-    # Here we use smaller values for demonstration
     results, summaries = convergence_study(
-        sample_sizes=[250, 500, 1000,2000],  # Can add 2000 for more evidence
-        M=10,  # Number of MC replications (increase to 500 for publication)
+        sample_sizes=[250, 500, 1000, 2000],
+        M=10,  # Increase to 500 for publication
         save_dir=output_dir,
-        n_jobs=-1  # Use all available cores
+        n_jobs=-1
     )
     
     print("\n" + "="*70)
     print("CONVERGENCE STUDY COMPLETED")
     print("="*70)
-    print(f"\nAll results saved to: {output_dir}")
+    print(f"\nAll results saved to: {output_dir}/")
     print("\nFiles generated:")
-    print(f"  - diagnostics_n*.png: Diagnostic plots for each sample size")
-    print(f"  - convergence_plot.png: Convergence across sample sizes")
+    for n in [250, 500, 1000, 2000]:
+        print(f"  - diagnostics_n{n}.png")
+        print(f"  - summary_n{n}.csv")
+    print(f"  - convergence_plot.png")
