@@ -50,7 +50,7 @@ analyzer = SubsamplingAnalysis(
 )
 
 # Generate time series
-n = 10000
+n = 100000
 print(f"\nSample size: n = {n}")
 Y = analyzer.generate_data(n=n, seed=42)
 print(f"Generated data: mean = {Y.mean():.4f}, std = {Y.std():.4f}")
@@ -153,8 +153,8 @@ if run_convergence == 'y':
         #   sample_sizes=[250, 500, 1000, 2000]
         #   M=500
         results_conv, summaries_conv = convergence_study(
-            sample_sizes=[10000],  # Reduced for demo
-            M=500,  # Reduced for demo (use 500 for publication)
+            sample_sizes=[100000],  # Reduced for demo
+            M=100,  # Reduced for demo (use 500 for publication)
             save_dir=output_dir,  # Use output_dir instead of '/outputs'
             n_jobs=-1
         )
