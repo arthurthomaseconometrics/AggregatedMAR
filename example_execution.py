@@ -50,7 +50,7 @@ analyzer = SubsamplingAnalysis(
 )
 
 # Generate time series
-n = 100000
+n = 100
 print(f"\nSample size: n = {n}")
 Y = analyzer.generate_data(n=n, seed=42)
 print(f"Generated data: mean = {Y.mean():.4f}, std = {Y.std():.4f}")
@@ -138,23 +138,24 @@ print("  - For demonstration: M=50 replications, 2 sample sizes (~30-60 min)")
 print("  - For publication: M=500 replications, 4 sample sizes (~10-20 hours)")
 
 # Ask user if they want to run convergence study
-#run_convergence = input("\nRun convergence study? (y/n): ").lower().strip()
+# run_convergence = input("\nRun convergence study? (y/n): ").lower().strip()
 # Uncomment the line below for interactive mode:
 
 
 #if run_convergence == 'y':
-print("\nStarting convergence study...")
-print("You can monitor progress in the console output.")
-print("Press Ctrl+C to interrupt if needed.\n")
+#print("\nStarting convergence study...")
+#print("You can monitor progress in the console output.")
+#print("Press Ctrl+C to interrupt if needed.\n")
     
-    #try:
-        # Run with reduced parameters for demonstration
-        # To replicate paper results, use:
-        #   sample_sizes=[250, 500, 1000, 2000]
-        #   M=500
+#try:
+# Run with reduced parameters for demonstration
+# To replicate paper results, use:
+#   sample_sizes=[250, 500, 1000, 2000]
+#   M=500
+
 results_conv, summaries_conv = convergence_study(
     sample_sizes=[100000],  # Reduced for demo
-    M=100,  # Reduced for demo (use 500 for publication)
+    M=1,  # Reduced for demo (use 500 for publication)
     save_dir=output_dir,  # Use output_dir instead of '/outputs'
     n_jobs=-1
     )
@@ -171,13 +172,13 @@ print("  ✓ Mean converging to 0")
 print("  ✓ Skewness and kurtosis decreasing in magnitude")
 print("  ✓ Test p-values increasing (moving away from rejection)")
         
-    #except KeyboardInterrupt:
-    #    print("\n\nConvergence study interrupted by user.")
-    #except Exception as e:
-    #    print(f"\n\nError in convergence study: {e}")
-    #    print("Check the error message above for details.")
-    #    import traceback
-    #    traceback.print_exc()
+# except KeyboardInterrupt:
+#    print("\n\nConvergence study interrupted by user.")
+# except Exception as e:
+#    print(f"\n\nError in convergence study: {e}")
+#    print("Check the error message above for details.")
+# #    import traceback
+#    traceback.print_exc()
         
 #else:
 #    print("\nSkipping convergence study.")
