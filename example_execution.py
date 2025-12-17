@@ -138,53 +138,52 @@ print("  - For demonstration: M=50 replications, 2 sample sizes (~30-60 min)")
 print("  - For publication: M=500 replications, 4 sample sizes (~10-20 hours)")
 
 # Ask user if they want to run convergence study
-run_convergence = input("\nRun convergence study? (y/n): ").lower().strip()
+#run_convergence = input("\nRun convergence study? (y/n): ").lower().strip()
 # Uncomment the line below for interactive mode:
 
 
-if run_convergence == 'y':
-    print("\nStarting convergence study...")
-    print("You can monitor progress in the console output.")
-    print("Press Ctrl+C to interrupt if needed.\n")
+#if run_convergence == 'y':
+print("\nStarting convergence study...")
+print("You can monitor progress in the console output.")
+print("Press Ctrl+C to interrupt if needed.\n")
     
-    try:
+    #try:
         # Run with reduced parameters for demonstration
         # To replicate paper results, use:
         #   sample_sizes=[250, 500, 1000, 2000]
         #   M=500
-        results_conv, summaries_conv = convergence_study(
-            sample_sizes=[100000],  # Reduced for demo
-            M=100,  # Reduced for demo (use 500 for publication)
-            save_dir=output_dir,  # Use output_dir instead of '/outputs'
-            n_jobs=-1
-        )
+results_conv, summaries_conv = convergence_study(
+    sample_sizes=[100000],  # Reduced for demo
+    M=100,  # Reduced for demo (use 500 for publication)
+    save_dir=output_dir,  # Use output_dir instead of '/outputs'
+    n_jobs=-1
+    )
         
-        print("\n" + "="*80)
-        print("CONVERGENCE STUDY COMPLETED")
-        print("="*80)
-        print("\nKey results to examine:")
-        print(f"  1. {output_dir}/convergence_plot.png - Shows improvement as n increases")
-        print(f"  2. {output_dir}/summary_n*.csv - Detailed statistics for each sample size")
-        print(f"  3. {output_dir}/diagnostics_n*.png - Visual diagnostics for each n")
+print("\n" + "="*80)
+print("CONVERGENCE STUDY COMPLETED")
+print("="*80)
+print("\nKey results to examine:")
+print(f"  1. {output_dir}/convergence_plot.png - Shows improvement as n increases")
+print(f"  2. {output_dir}/summary_n*.csv - Detailed statistics for each sample size")
+print(f"  3. {output_dir}/diagnostics_n*.png - Visual diagnostics for each n")
+print("\nWhat to look for in the convergence plot:")
+print("  ✓ Mean converging to 0")
+print("  ✓ Skewness and kurtosis decreasing in magnitude")
+print("  ✓ Test p-values increasing (moving away from rejection)")
         
-        print("\nWhat to look for in the convergence plot:")
-        print("  ✓ Mean converging to 0")
-        print("  ✓ Skewness and kurtosis decreasing in magnitude")
-        print("  ✓ Test p-values increasing (moving away from rejection)")
+    #except KeyboardInterrupt:
+    #    print("\n\nConvergence study interrupted by user.")
+    #except Exception as e:
+    #    print(f"\n\nError in convergence study: {e}")
+    #    print("Check the error message above for details.")
+    #    import traceback
+    #    traceback.print_exc()
         
-    except KeyboardInterrupt:
-        print("\n\nConvergence study interrupted by user.")
-    except Exception as e:
-        print(f"\n\nError in convergence study: {e}")
-        print("Check the error message above for details.")
-        import traceback
-        traceback.print_exc()
-        
-else:
-    print("\nSkipping convergence study.")
-    print("To run it later, execute:")
-    print("  from subsampling_analysis_fixed import convergence_study")
-    print("  convergence_study(sample_sizes=[250, 500, 1000], M=100, save_dir='outputs')")
+#else:
+#    print("\nSkipping convergence study.")
+#    print("To run it later, execute:")
+#    print("  from subsampling_analysis_fixed import convergence_study")
+#    print("  convergence_study(sample_sizes=[250, 500, 1000], M=100, save_dir='outputs')")
 
 
 # ==============================================================================
