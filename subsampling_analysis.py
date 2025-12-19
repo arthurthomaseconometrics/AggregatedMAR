@@ -509,7 +509,7 @@ def convergence_study(sample_sizes: List[int] = [250, 500, 1000],
         results_n = analyzer.monte_carlo_subsample(
             n=n,
             M=M,
-            b=int(np.floor(n ** (2/3))),
+            b=int(np.floor(n ** (0.8))),
             seed=42,
             n_jobs=n_jobs
         )

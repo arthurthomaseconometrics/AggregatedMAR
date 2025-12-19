@@ -50,13 +50,13 @@ analyzer = SubsamplingAnalysis(
 )
 
 # Generate time series
-n = 100
+n = 2000
 print(f"\nSample size: n = {n}")
 Y = analyzer.generate_data(n=n, seed=42)
 print(f"Generated data: mean = {Y.mean():.4f}, std = {Y.std():.4f}")
 
 # Perform subsampling analysis
-b = int(np.floor(n ** (2/3)))  # Subsample size: n^(2/3)
+b = int(np.floor(n ** (0.8)))  # Subsample size: n^(2/3)
 print(f"Subsample size: b = {b}")
 print(f"Number of subsamples: N_b = {n - b + 1}")
 
@@ -154,8 +154,8 @@ print("  - For publication: M=500 replications, 4 sample sizes (~10-20 hours)")
 #   M=500
 
 results_conv, summaries_conv = convergence_study(
-    sample_sizes=[100000],  # Reduced for demo
-    M=1,  # Reduced for demo (use 500 for publication)
+    sample_sizes=[250, 500, 1000, 2000],  # Reduced for demo
+    M=10,  # Reduced for demo (use 500 for publication)
     save_dir=output_dir,  # Use output_dir instead of '/outputs'
     n_jobs=-1
     )
