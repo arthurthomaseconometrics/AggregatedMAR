@@ -155,7 +155,7 @@ print("  - For publication: M=500 replications, 4 sample sizes (~10-20 hours)")
 
 results_conv, summaries_conv = convergence_study(
     sample_sizes=[250, 500, 1000, 2000],  # Reduced for demo
-    M=10,  # Reduced for demo (use 500 for publication)
+    M=500,  # Reduced for demo (use 500 for publication)
     save_dir=output_dir,  # Use output_dir instead of '/outputs'
     n_jobs=-1
     )
@@ -229,10 +229,10 @@ print("="*80)
 print(f"\nAll results saved to: {output_dir}/")
 print("\nFiles generated:")
 print(f"  - {output_dir}/step1_diagnostics.png: Diagnostic plots from Step 1")
-if run_convergence == 'y':
-    print(f"  - {output_dir}/convergence_plot.png: Convergence visualization")
-    print(f"  - {output_dir}/diagnostics_n*.png: Diagnostics for each sample size")
-    print(f"  - {output_dir}/summary_n*.csv: Summary statistics tables")
+
+print(f"  - {output_dir}/convergence_plot.png: Convergence visualization")
+print(f"  - {output_dir}/diagnostics_n*.png: Diagnostics for each sample size")
+print(f"  - {output_dir}/summary_n*.csv: Summary statistics tables")
 
 print("\n" + "="*80)
 print("For more information, see:")
