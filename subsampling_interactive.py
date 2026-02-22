@@ -130,22 +130,35 @@ def _one_rep(seed, n, b, tp_full, tp_est, J, av, bv, fa, fb,
     vld2 = ~np.isnan(ov_e).any(axis=1); ov_e = ov_e[vld2]
     sd_ov = np.sqrt(b)*(ov_e - tn) if len(ov_e) >= 3 else np.full((0,p), np.nan)
 
-    # CIs
+    # CIs: quantile-based AND normal (variance-based)
     ci = {}
+    ci_norm = {}
     for lv in clevels:
         ci[lv] = {}
+        ci_norm[lv] = {}
         a = 1 - lv
+        z_crit = stats.norm.ppf(1 - a/2)
         for k in range(p):
             if sd_ov.shape[0] >= 3:
                 zk = sd_ov[:,k]; zk = zk[np.isfinite(zk)]
                 if len(zk) >= 3:
+                    # Quantile-based CI (standard subsampling)
                     ql, qh = np.quantile(zk, a/2), np.quantile(zk, 1-a/2)
                     clo, chi = tn[k]-qh/np.sqrt(n), tn[k]-ql/np.sqrt(n)
                     ci[lv][pnames[k]] = {
                         'covers': float(tp_est[k]>=clo and tp_est[k]<=chi),
                         'width': chi-clo}
+                    # Normal CI (variance-based, bias-robust)
+                    V_hat = float(np.var(zk, ddof=1))  # centered variance
+                    se_hat = np.sqrt(V_hat / n)
+                    clo_n = tn[k] - z_crit * se_hat
+                    chi_n = tn[k] + z_crit * se_hat
+                    ci_norm[lv][pnames[k]] = {
+                        'covers': float(tp_est[k]>=clo_n and tp_est[k]<=chi_n),
+                        'width': chi_n - clo_n}
                     continue
             ci[lv][pnames[k]] = {'covers': np.nan, 'width': np.nan}
+            ci_norm[lv][pnames[k]] = {'covers': np.nan, 'width': np.nan}
 
     # Normality tests
     nr = {}
@@ -170,7 +183,7 @@ def _one_rep(seed, n, b, tp_full, tp_est, J, av, bv, fa, fb,
             ['mean','std','skewness','kurtosis','ks_rej','sw_rej','jb_rej']}
         nr[pnames[k]]['n_blocks'] = 0
 
-    return {'theta_n':tn, 'sd_no':sd_no, 'ci_res':ci,
+    return {'theta_n':tn, 'sd_no':sd_no, 'ci_res':ci, 'ci_norm_res':ci_norm,
             'norm_res':nr, 'n_no':sd_no.shape[0], 'n_ov':sd_ov.shape[0]}
 
 
@@ -245,10 +258,21 @@ class _Engine:
 
         for l in cl:
             for p in self.param_names:
+                # Quantile-based CI
                 c=[r['ci_res'][l][p]['covers'] for r in reps if not np.isnan(r['ci_res'][l][p].get('covers',np.nan))]
                 w=[r['ci_res'][l][p]['width']  for r in reps if not np.isnan(r['ci_res'][l][p].get('width',np.nan))]
                 a['coverage'][l][p] = float(np.mean(c)) if c else np.nan
                 a['ci_width'][l][p] = float(np.mean(w)) if w else np.nan
+
+        # Normal CI (variance-based)
+        a['cov_norm'] = {l:{} for l in cl}
+        a['w_norm'] = {l:{} for l in cl}
+        for l in cl:
+            for p in self.param_names:
+                c=[r['ci_norm_res'][l][p]['covers'] for r in reps if not np.isnan(r['ci_norm_res'][l][p].get('covers',np.nan))]
+                w=[r['ci_norm_res'][l][p]['width']  for r in reps if not np.isnan(r['ci_norm_res'][l][p].get('width',np.nan))]
+                a['cov_norm'][l][p] = float(np.mean(c)) if c else np.nan
+                a['w_norm'][l][p] = float(np.mean(w)) if w else np.nan
 
         for r in reps:
             sd = r['sd_no']
@@ -258,7 +282,7 @@ class _Engine:
         return a
 
     def table(self, agg):
-        """Summary DataFrame with correct Ratio."""
+        """Summary DataFrame with both quantile-based and normal CIs."""
         n_val = agg['n']
         rows = []
         for p in agg['param_names']:
@@ -271,12 +295,12 @@ class _Engine:
                    'Ratio':ratio,
                    'Skew':agg['moments'][p]['skewness'],
                    'Kurt':agg['moments'][p]['kurtosis'],
-                   'KS Rej.':agg['rej_rates'][p]['ks_rej'],
                    'SW Rej.':agg['rej_rates'][p]['sw_rej'],
                    'JB Rej.':agg['rej_rates'][p]['jb_rej']}
             for l in agg['conf_levels']:
-                row[f'Cov{int(l*100)}'] = agg['coverage'][l][p]
-                row[f'W{int(l*100)}'] = agg['ci_width'][l][p]
+                pct = int(l*100)
+                row[f'qCov{pct}'] = agg['coverage'][l][p]       # quantile CI
+                row[f'nCov{pct}'] = agg['cov_norm'][l][p]       # normal CI
             rows.append(row)
         return pd.DataFrame(rows)
 
