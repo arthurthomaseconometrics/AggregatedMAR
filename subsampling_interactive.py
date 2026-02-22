@@ -393,21 +393,23 @@ def run_study(sample_sizes: List[int] = [250, 500, 1000, 10000],
             f.write(f"n={n}  (b={a['b']}, M={a['M']})\n" + "-"*80 + "\n")
             f.write(all_df[n].to_string(index=False) + "\n\n")
 
-    # Convergence plot (6 panels)
+    # Convergence plot (8 panels: diagnostics + both CI types)
     if len(sample_sizes) >= 2:
         ns = sorted(sample_sizes)
         params = all_df[ns[0]]['Parameter'].tolist()
-        fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+        fig, axes = plt.subplots(2, 4, figsize=(24, 10))
         panels = [
             ('Dev.Mean', 'Mean of Scaled Deviations', 0),
             ('Ratio', 'Ratio Dev.Std / (√n · Std Est.)', 1.0),
             ('Skew', 'Skewness', 0),
             ('Kurt', 'Excess Kurtosis', 0),
-            ('Cov90', 'CI Coverage 90%', 0.90),
-            ('Cov95', 'CI Coverage 95%', 0.95),
+            ('qCov90', 'Quantile CI Coverage 90%', 0.90),
+            ('qCov95', 'Quantile CI Coverage 95%', 0.95),
+            ('nCov90', 'Normal CI Coverage 90%', 0.90),
+            ('nCov95', 'Normal CI Coverage 95%', 0.95),
         ]
         for i, (col, title, ref) in enumerate(panels):
-            ax = axes[i//3, i%3]
+            ax = axes[i//4, i%4]
             for p in params:
                 vals = [float(all_df[nn][all_df[nn]['Parameter']==p][col].values[0])
                         for nn in ns if nn in all_df]
@@ -471,8 +473,8 @@ def run_sensitivity(sample_sizes: List[int] = [500, 1000, 2000],
 
             avg_ratio = df['Ratio'].mean()
             ratio_dev = (df['Ratio'] - 1).abs().mean()
-            avg_cov90 = df['Cov90'].mean()
-            avg_cov95 = df['Cov95'].mean()
+            avg_cov90 = df['nCov90'].mean()
+            avg_cov95 = df['nCov95'].mean()
 
             rows.append({
                 'exp': exp, 'b': b, 'n/b': n//b,
