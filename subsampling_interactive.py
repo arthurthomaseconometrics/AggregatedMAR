@@ -369,6 +369,34 @@ def run_study(sample_sizes: List[int] = [250, 500, 1000, 10000],
             f.write(f"n={n}  (b={a['b']}, M={a['M']})\n" + "-"*80 + "\n")
             f.write(all_df[n].to_string(index=False) + "\n\n")
 
+    # Convergence plot (6 panels)
+    if len(sample_sizes) >= 2:
+        ns = sorted(sample_sizes)
+        params = all_df[ns[0]]['Parameter'].tolist()
+        fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+        panels = [
+            ('Dev.Mean', 'Mean of Scaled Deviations', 0),
+            ('Ratio', 'Ratio Dev.Std / (√n · Std Est.)', 1.0),
+            ('Skew', 'Skewness', 0),
+            ('Kurt', 'Excess Kurtosis', 0),
+            ('Cov90', 'CI Coverage 90%', 0.90),
+            ('Cov95', 'CI Coverage 95%', 0.95),
+        ]
+        for i, (col, title, ref) in enumerate(panels):
+            ax = axes[i//3, i%3]
+            for p in params:
+                vals = [float(all_df[nn][all_df[nn]['Parameter']==p][col].values[0])
+                        for nn in ns if nn in all_df]
+                ax.plot(ns, vals, marker='o', lw=2, ms=7, label=p)
+            ax.axhline(ref, color='red', ls='--', lw=2, label=f'Target ({ref})')
+            ax.set_xlabel('n'); ax.set_title(title, fontweight='bold')
+            ax.legend(fontsize=7); ax.grid(True, alpha=.3); ax.set_xscale('log')
+            if 'Cov' in col: ax.set_ylim([0.0, 1.05])
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, 'convergence_plot.png'),
+                    dpi=300, bbox_inches='tight')
+        plt.close()
+
     print(f"\nAll results in {output_dir}/")
     return all_df
 
