@@ -79,7 +79,7 @@ def fast_objective(params, ecf, u_grid, v_grid, J, alpha_fixed, beta_val):
 
 
 def estimate_sub(Y_sub, x0, u_grid, v_grid, J, bounds,
-                 alpha_fixed, beta_val, maxiter=60):
+                 alpha_fixed, beta_val, maxiter=200):
     """Fast MDE on subsample with warm start."""
     try:
         ecf = vectorized_ecf(Y_sub, u_grid, v_grid)
@@ -113,7 +113,7 @@ def _one_rep(seed, n, b, tp_full, tp_est, J, av, bv, fa, fb,
         num_components=J, alpha_value=av, beta_value=bv,
         fix_alpha=fa, fix_beta=fb, verbose=False)
     Y, _ = mdl.generate(T=n, params=tp_full, seed=seed)
-    tn = np.array(mdl.estimate(Y, use_optimal_weights=False))
+    tn = np.array(mdl.estimate(Y, use_optimal_weights=True))
 
     # Non-overlapping blocks
     nno = n // b
@@ -216,7 +216,7 @@ class _Engine:
         """Run M replications in parallel."""
         if ci_step is None:
             Nb = n - b + 1
-            ci_step = max(Nb // 100, 1)
+            ci_step = 1#max(Nb // 100, 1)
 
         nno = n // b
         nov = len(range(0, n-b+1, max(ci_step,1)))

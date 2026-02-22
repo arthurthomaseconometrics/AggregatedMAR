@@ -85,7 +85,7 @@ def fast_objective(params, ecf, u_grid, v_grid, J, alpha_fixed, beta_val):
 
 
 def estimate_sub(Y_sub, x0, u_grid, v_grid, J, bounds,
-                 alpha_fixed, beta_val, maxiter=60):
+                 alpha_fixed, beta_val, maxiter=200):
     """Fast MDE on subsample with warm start."""
     try:
         ecf = vectorized_ecf(Y_sub, u_grid, v_grid)
