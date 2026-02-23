@@ -299,7 +299,7 @@ class _EngineReparam:
         """Run M replications in parallel."""
         if ci_step is None:
             Nb = n - b + 1
-            ci_step = max(Nb // 100, 1)
+            ci_step = 1 #max(Nb // 100, 1)
 
         nno = n // b
         nov = len(range(0, n - b + 1, max(ci_step, 1)))
