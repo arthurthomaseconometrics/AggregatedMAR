@@ -24,24 +24,24 @@ SEED = 42
 # ========================================================================
 # 1. Criterion Difference Test (Monte Carlo)
 # ========================================================================
-print("\n" + "=" * 80)
-print("PART 1: CRITERION DIFFERENCE TEST  H0: pi_1 = 0.5")
-print("=" * 80)
+#print("\n" + "=" * 80)
+#print("PART 1: CRITERION DIFFERENCE TEST  H0: pi_1 = 0.5")
+#print("=" * 80)
 
-criterion_results = run_mc_criterion_test(
-    sample_sizes=[500, 1000, 10000, 50000],
-    M=200,
-    b_exponent=2/3,
-    n_cores=-1,
-    seed=SEED,
-    output_dir='results_criterion_test',
-    true_params=TRUE_PARAMS,
-    alpha=ALPHA,
-    beta=BETA,
-    fix_alpha=False,
-    fix_beta=True,
-    J=J,
-)
+#criterion_results = run_mc_criterion_test(
+#    sample_sizes=[500, 1000, 10000, 50000],
+#    M=200,
+#    b_exponent=2/3,
+#    n_cores=-1,
+#    seed=SEED,
+#    output_dir='results_criterion_test',
+#    true_params=TRUE_PARAMS,
+#    alpha=ALPHA,
+#    beta=BETA,
+#    fix_alpha=False,
+#    fix_beta=True,
+#    J=J,
+#)
 
 # ========================================================================
 # 2. Restricted Subsampling (pi_1 = 0.5 imposed)
