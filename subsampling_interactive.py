@@ -33,14 +33,18 @@ warnings.filterwarnings('ignore')
 
 def vectorized_ecf(Y, u_grid, v_grid):
     """Compute empirical joint CF on (u,v) grid via broadcasting."""
-    Y1, Y0 = Y[1:], Y[:-1]
-    phase = (u_grid[:, None, None] * Y1[None, None, :]
-             + v_grid[None, :, None] * Y0[None, None, :])
+    Y0, Y1 = Y[:-1], Y[1:]
+    phase = (u_grid * Y0 + v_grid * Y1)
     return np.mean(np.exp(1j * phase), axis=2)
 
-
 def vectorized_tcf(params, u_grid, v_grid, J, alpha_fixed, beta_val):
-    """Compute theoretical joint CF on (u,v) grid."""
+    """Compute theoretical joint CF on (u,v) grid.
+
+    Implements E[exp(i(u*X_t + v*X_{t+1}))] for the MAR(0,1) aggregate.
+    The decomposition u*X_{j,t} + v*X_{j,t+1}
+                    = (rho_j*u + v)*X_{j,t+1} + u*eps_{j,t}
+    yields the two independent terms |rho_j*u + v|^alpha and |u|^alpha.
+    """
     rhos, varsigmas = params[:J], params[J:2*J]
     alpha = params[2*J] if alpha_fixed is None else alpha_fixed
     sigma = np.sum(varsigmas)
@@ -50,21 +54,21 @@ def vectorized_tcf(params, u_grid, v_grid, J, alpha_fixed, beta_val):
     if alpha != 1:
         tan_t = np.tan(np.pi * alpha / 2)
         for j in range(J):
-            a1 = U + rhos[j] * V
+            a1 = rhos[j] * U + V          # rho_j*u + v
             exponent += -pis[j]**alpha * sigma**alpha * (
-                np.abs(a1)**alpha * (1 - 1j*beta_val*np.sign(a1)*tan_t)
+                np.abs(a1)**alpha * (1 - 1j * beta_val * np.sign(a1) * tan_t)
                 / (1 - np.abs(rhos[j])**alpha)
-                + np.abs(V)**alpha * (1 - 1j*beta_val*np.sign(V)*tan_t))
+                + np.abs(U)**alpha * (1 - 1j * beta_val * np.sign(U) * tan_t))
     else:
         for j in range(J):
-            a1 = U + rhos[j] * V
-            exponent += -pis[j]*sigma*(
-                np.abs(a1)*(1+1j*beta_val*np.sign(a1)*2/np.pi
-                            *np.log(np.abs(a1)+1e-10))/(1-np.abs(rhos[j]))
-                + np.abs(V)*(1+1j*beta_val*np.sign(V)*2/np.pi
-                             *np.log(np.abs(V)+1e-10)))
+            a1 = rhos[j] * U + V          # rho_j*u + v
+            exponent += -pis[j] * sigma * (
+                np.abs(a1) * (1 + 1j * beta_val * np.sign(a1) * 2 / np.pi
+                              * np.log(np.abs(a1) + 1e-10))
+                / (1 - np.abs(rhos[j]))
+                + np.abs(U) * (1 + 1j * beta_val * np.sign(U) * 2 / np.pi
+                               * np.log(np.abs(U) + 1e-10)))
     return np.exp(exponent)
-
 
 def fast_objective(params, ecf, u_grid, v_grid, J, alpha_fixed, beta_val):
     """MDE objective."""
