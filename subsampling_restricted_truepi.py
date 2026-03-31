@@ -11,6 +11,13 @@ and the varsigma's are recovered via:
 All diagnostics and confidence intervals are computed on the restricted
 parameter vector (rho_1, rho_2, sigma, alpha).
 
+Convention (u, v):
+    u is associated with X_t  (Y[:-1])
+    v is associated with X_{t+1} (Y[1:])
+This matches the theoretical CF decomposition:
+    u*X_{j,t} + v*X_{j,t+1} = (rho_j*u + v)*X_{j,t+1} + u*eps_{j,t}
+giving |rho_j*u + v|^alpha and |u|^alpha terms in _tcf_matrix.
+
 Usage:
     from subsampling_restricted import run_study_restricted
 
@@ -40,15 +47,27 @@ warnings.filterwarnings('ignore')
 # =============================================================================
 
 def _ecf_matrix(Y, u_grid, v_grid):
-    """Compute empirical joint CF on (u,v) grid via broadcasting."""
-    Y1, Y0 = Y[1:], Y[:-1]
-    phase = (u_grid[:, None, None] * Y1[None, None, :]
-             + v_grid[None, :, None] * Y0[None, None, :])
+    """Compute empirical joint CF on (u,v) grid via broadcasting.
+
+    Convention: u is associated with X_t = Y[:-1],
+                v is associated with X_{t+1} = Y[1:].
+    This is consistent with the theoretical CF where
+    E[exp(i(u*X_t + v*X_{t+1}))] decomposes as
+    (rho_j*u + v)*X_{j,t+1} + u*eps_{j,t}.
+    """
+    Y0, Y1 = Y[:-1], Y[1:]   # Y0 = X_t, Y1 = X_{t+1}
+    phase = (u_grid[:, None, None] * Y0[None, None, :]
+             + v_grid[None, :, None] * Y1[None, None, :])
     return np.mean(np.exp(1j * phase), axis=2)
 
 
 def _tcf_matrix(params_raw, u_grid, v_grid, J, alpha_fixed, beta_val):
     """Compute theoretical joint CF on (u,v) grid.
+
+    Implements E[exp(i(u*X_t + v*X_{t+1}))] for the MAR(0,1) aggregate.
+    The decomposition u*X_{j,t} + v*X_{j,t+1}
+                    = (rho_j*u + v)*X_{j,t+1} + u*eps_{j,t}
+    yields the two independent terms |rho_j*u + v|^alpha and |u|^alpha.
 
     Parameters
     ----------
@@ -78,20 +97,20 @@ def _tcf_matrix(params_raw, u_grid, v_grid, J, alpha_fixed, beta_val):
     if alpha != 1:
         tan_t = np.tan(np.pi * alpha / 2)
         for j in range(J):
-            a1 = U + rhos[j] * V
+            a1 = rhos[j] * U + V          # rho_j*u + v
             exponent += -pis[j]**alpha * sigma**alpha * (
                 np.abs(a1)**alpha * (1 - 1j * beta_val * np.sign(a1) * tan_t)
                 / (1 - np.abs(rhos[j])**alpha)
-                + np.abs(V)**alpha * (1 - 1j * beta_val * np.sign(V) * tan_t))
+                + np.abs(U)**alpha * (1 - 1j * beta_val * np.sign(U) * tan_t))
     else:
         for j in range(J):
-            a1 = U + rhos[j] * V
+            a1 = rhos[j] * U + V          # rho_j*u + v
             exponent += -pis[j] * sigma * (
                 np.abs(a1) * (1 + 1j * beta_val * np.sign(a1) * 2 / np.pi
                               * np.log(np.abs(a1) + 1e-10))
                 / (1 - np.abs(rhos[j]))
-                + np.abs(V) * (1 + 1j * beta_val * np.sign(V) * 2 / np.pi
-                               * np.log(np.abs(V) + 1e-10)))
+                + np.abs(U) * (1 + 1j * beta_val * np.sign(U) * 2 / np.pi
+                               * np.log(np.abs(U) + 1e-10)))
     return np.exp(exponent)
 
 
@@ -144,8 +163,8 @@ def _obj_restricted(params_r, ecf, u_grid, v_grid, J,
 
 
 def _estimate_restricted_sub(Y_sub, x0_r, u_grid, v_grid, J,
-                             bounds_restr, alpha_fixed, beta_val,
-                             pi_true, maxiter=200):
+                              bounds_restr, alpha_fixed, beta_val,
+                              pi_true, maxiter=200):
     """Estimate restricted model on a subsample with warm start.
 
     Parameters
@@ -276,49 +295,7 @@ def _one_rep_restricted(seed, n, b, tp_full, tp_restr, pi_true, J,
                         av, bv, fa, fb,
                         ug, vg, bounds_restr, pnames_restr,
                         clevels, ci_step):
-    """Single MC replication for restricted subsampling.
-
-    Parameters
-    ----------
-    seed : int
-        Random seed.
-    n : int
-        Full sample size.
-    b : int
-        Block size.
-    tp_full : tuple
-        Full true parameters (rho_1,...,rho_J, varsigma_1,...,varsigma_J, alpha, beta).
-    tp_restr : np.ndarray
-        True parameter values in restricted space.
-    pi_true : np.ndarray
-        True mixing weights (pi_1,...,pi_J).
-    J : int
-        Number of components.
-    av : float
-        Alpha value.
-    bv : float
-        Beta value.
-    fa : bool
-        Fix alpha.
-    fb : bool
-        Fix beta.
-    ug, vg : np.ndarray
-        Evaluation grids.
-    bounds_restr : list of tuples
-        Bounds for restricted estimation.
-    pnames_restr : list of str
-        Parameter names in restricted space.
-    clevels : tuple of float
-        Confidence levels.
-    ci_step : int
-        Thinning step for overlapping blocks.
-
-    Returns
-    -------
-    dict
-        Results containing theta_n, scaled deviations, CI results,
-        normality test results.
-    """
+    """Single MC replication for restricted subsampling."""
     from stablemixture import StableMixtureDeconvolution
     af = av if fa else None
     p = len(pnames_restr)
@@ -447,24 +424,6 @@ class _EngineRestricted:
 
     def __init__(self, J=2, true_params=(0.8, 0.3, 0.7, 0.9, 1.5, 0),
                  alpha=1.5, beta=0.0, fix_alpha=False, fix_beta=True):
-        """Initialize the restricted subsampling engine.
-
-        Parameters
-        ----------
-        J : int
-            Number of components.
-        true_params : tuple
-            Full true parameters:
-            (rho_1,...,rho_J, varsigma_1,...,varsigma_J, alpha, beta).
-        alpha : float
-            Stability index.
-        beta : float
-            Skewness parameter.
-        fix_alpha : bool
-            Whether alpha is fixed during estimation.
-        fix_beta : bool
-            Whether beta is fixed during estimation.
-        """
         self.J = J
         self.alpha, self.beta = alpha, beta
         self.fix_alpha, self.fix_beta = fix_alpha, fix_beta
@@ -494,35 +453,10 @@ class _EngineRestricted:
 
     def mc(self, n, M, b, seed=42, conf_levels=(0.90, 0.95),
            ci_step=None, n_cores=-1, backend='loky'):
-        """Run M replications in parallel.
-
-        Parameters
-        ----------
-        n : int
-            Full sample size.
-        M : int
-            Number of Monte Carlo replications.
-        b : int
-            Block size.
-        seed : int
-            Base random seed.
-        conf_levels : tuple of float
-            Confidence levels.
-        ci_step : int or None
-            Thinning step for overlapping blocks (None = auto).
-        n_cores : int
-            Number of cores (-1 = all).
-        backend : str
-            Joblib backend.
-
-        Returns
-        -------
-        dict
-            Aggregated results.
-        """
+        """Run M replications in parallel."""
         if ci_step is None:
             Nb = n - b + 1
-            ci_step = 1#max(Nb // 100, 1)
+            ci_step = 1  # max(Nb // 100, 1)
 
         nno = n // b
         nov = len(range(0, n - b + 1, max(ci_step, 1)))
@@ -543,22 +477,7 @@ class _EngineRestricted:
         return self._agg(reps, n, b, M, conf_levels)
 
     def _agg(self, reps, n, b, M, cl):
-        """Aggregate results across replications.
-
-        Parameters
-        ----------
-        reps : list of dict
-            Individual replication results.
-        n, b, M : int
-            Sample size, block size, number of replications.
-        cl : tuple of float
-            Confidence levels.
-
-        Returns
-        -------
-        dict
-            Aggregated statistics.
-        """
+        """Aggregate results across replications."""
         pnames = self.param_names
         a = {'n': n, 'b': b, 'M': M,
              'param_names': pnames, 'conf_levels': cl,
@@ -570,16 +489,16 @@ class _EngineRestricted:
 
         # Full-sample estimates (in restricted space)
         ta = np.array([r['theta_n'] for r in reps
-                        if not np.any(np.isnan(r['theta_n']))])
+                       if not np.any(np.isnan(r['theta_n']))])
         a['theta_n_mean'] = {}
         a['theta_n_std'] = {}
         a['true_params_est'] = {}
         for k, p in enumerate(pnames):
             a['true_params_est'][p] = float(self.tp_restr[k])
             a['theta_n_mean'][p] = (float(np.mean(ta[:, k]))
-                                     if len(ta) > 0 else np.nan)
-            a['theta_n_std'][p] = (float(np.std(ta[:, k]))
                                     if len(ta) > 0 else np.nan)
+            a['theta_n_std'][p] = (float(np.std(ta[:, k]))
+                                   if len(ta) > 0 else np.nan)
 
         # Moments and rejection rates from normality tests
         for p in pnames:
@@ -626,18 +545,7 @@ class _EngineRestricted:
         return a
 
     def table(self, agg):
-        """Build summary DataFrame.
-
-        Parameters
-        ----------
-        agg : dict
-            Aggregated results from _agg().
-
-        Returns
-        -------
-        pd.DataFrame
-            Summary table.
-        """
+        """Build summary DataFrame."""
         n_val = agg['n']
         rows = []
         for p in agg['param_names']:
@@ -665,15 +573,7 @@ class _EngineRestricted:
         return pd.DataFrame(rows)
 
     def plot_diag(self, agg, path=None):
-        """Diagnostic histograms + QQ + KDE.
-
-        Parameters
-        ----------
-        agg : dict
-            Aggregated results.
-        path : str or None
-            If provided, save figure to this path.
-        """
+        """Diagnostic histograms + QQ + KDE."""
         ps = agg['param_names']
         np_ = len(ps)
         fig, ax = plt.subplots(np_, 3, figsize=(15, 4 * np_))
@@ -742,7 +642,7 @@ def run_study_restricted(
     seed : int
         Base random seed.
     ci_step : int or None
-        Override thinning step (None = auto ~100 blocks).
+        Override thinning step (None = auto ci_step=1).
     output_dir : str
         Where to save .txt, .csv, .png files.
     **engine_kwargs

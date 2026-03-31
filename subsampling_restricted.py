@@ -10,6 +10,13 @@ All diagnostics and CIs are computed on the restricted parameter vector
 This should exhibit substantially better convergence than the unrestricted
 subsampling, because the weakly-identified pi_1 dimension is removed.
 
+Convention (u, v):
+    u is associated with X_t  (Y[:-1])
+    v is associated with X_{t+1} (Y[1:])
+This matches the theoretical CF decomposition:
+    u*X_{j,t} + v*X_{j,t+1} = (rho_j*u + v)*X_{j,t+1} + u*eps_{j,t}
+giving |rho_j*u + v|^alpha and |u|^alpha terms in _tcf_restr.
+
 Usage:
     from subsampling_restricted import run_study_restricted
 """
@@ -34,10 +41,17 @@ warnings.filterwarnings('ignore')
 # =========================================================================
 
 def _ecf_matrix(Y, u_grid, v_grid):
-    """Empirical joint CF on (u,v) grid."""
-    Y1, Y0 = Y[1:], Y[:-1]
-    phase = (u_grid[:, None, None] * Y1[None, None, :]
-             + v_grid[None, :, None] * Y0[None, None, :])
+    """Empirical joint CF on (u,v) grid.
+
+    Convention: u is associated with X_t = Y[:-1],
+                v is associated with X_{t+1} = Y[1:].
+    This is consistent with the theoretical CF where
+    E[exp(i(u*X_t + v*X_{t+1}))] decomposes as
+    (rho_j*u + v)*X_{j,t+1} + u*eps_{j,t}.
+    """
+    Y0, Y1 = Y[:-1], Y[1:]   # Y0 = X_t, Y1 = X_{t+1}
+    phase = (u_grid[:, None, None] * Y0[None, None, :]
+             + v_grid[None, :, None] * Y1[None, None, :])
     return np.mean(np.exp(1j * phase), axis=2)
 
 
@@ -46,6 +60,11 @@ def _tcf_restr(params_r, u_grid, v_grid, J, alpha_fixed, beta_val):
 
     params_r: (rho_1, ..., rho_J, sigma, [alpha])
     Internally: varsigma_j = sigma / J for all j.
+
+    Implements E[exp(i(u*X_t + v*X_{t+1}))] for the MAR(0,1) aggregate.
+    The decomposition u*X_{j,t} + v*X_{j,t+1}
+                    = (rho_j*u + v)*X_{j,t+1} + u*eps_{j,t}
+    yields |rho_j*u + v|^alpha and |u|^alpha.
     """
     rhos = params_r[:J]
     sigma = params_r[J]
@@ -56,19 +75,19 @@ def _tcf_restr(params_r, u_grid, v_grid, J, alpha_fixed, beta_val):
     if alpha != 1:
         tan_t = np.tan(np.pi * alpha / 2)
         for j in range(J):
-            a1 = U + rhos[j] * V
+            a1 = rhos[j] * U + V          # rho_j*u + v
             exponent += -pi_j**alpha * sigma**alpha * (
                 np.abs(a1)**alpha * (1 - 1j * beta_val * np.sign(a1) * tan_t)
                 / (1 - np.abs(rhos[j])**alpha)
-                + np.abs(V)**alpha * (1 - 1j * beta_val * np.sign(V) * tan_t))
+                + np.abs(U)**alpha * (1 - 1j * beta_val * np.sign(U) * tan_t))
     else:
         for j in range(J):
-            a1 = U + rhos[j] * V
+            a1 = rhos[j] * U + V          # rho_j*u + v
             exponent += -pi_j * sigma * (
                 np.abs(a1) * (1 + 1j * beta_val * np.sign(a1) * 2 / np.pi
                               * np.log(np.abs(a1) + 1e-10)) / (1 - np.abs(rhos[j]))
-                + np.abs(V) * (1 + 1j * beta_val * np.sign(V) * 2 / np.pi
-                               * np.log(np.abs(V) + 1e-10)))
+                + np.abs(U) * (1 + 1j * beta_val * np.sign(U) * 2 / np.pi
+                               * np.log(np.abs(U) + 1e-10)))
     return np.exp(exponent)
 
 
@@ -219,7 +238,8 @@ def _one_rep_restricted(seed, n, b, tp_full, tp_restr, J, av, bv, fa, fb,
                     clo_n = tn[k] - z_crit * se_hat
                     chi_n = tn[k] + z_crit * se_hat
                     ci_norm[lv][pnames[k]] = {
-                        'covers': float(tp_restr[k] >= clo_n and tp_restr[k] <= chi_n),
+                        'covers': float(tp_restr[k] >= clo_n
+                                        and tp_restr[k] <= chi_n),
                         'width': chi_n - clo_n}
                     continue
             ci[lv][pnames[k]] = {'covers': np.nan, 'width': np.nan}
@@ -287,7 +307,7 @@ class _EngineRestricted:
         """Run M replications in parallel."""
         if ci_step is None:
             Nb = n - b + 1
-            ci_step = 1 #max(Nb // 100, 1)
+            ci_step = 1  # max(Nb // 100, 1)
 
         nno = n // b
         nov = len(range(0, n - b + 1, max(ci_step, 1)))
@@ -401,7 +421,8 @@ class _EngineRestricted:
         if np_ == 1:
             ax = ax.reshape(1, -1)
         fig.suptitle(
-            f"Diagnostics (restricted, pi_1=0.5) n={agg['n']}, b={agg['b']}, M={agg['M']}",
+            f"Diagnostics (restricted, pi_1=0.5) "
+            f"n={agg['n']}, b={agg['b']}, M={agg['M']}",
             fontsize=13)
         for i, p in enumerate(ps):
             z = np.array(agg['pooled_no'][p])
@@ -452,7 +473,7 @@ def run_study_restricted(
         b_exponent: Block size exponent.
         n_cores: Cores for parallelization (-1 = all).
         seed: Base random seed.
-        ci_step: Override thinning step.
+        ci_step: Override thinning step (None = auto ci_step=1).
         output_dir: Where to save results.
         **engine_kwargs: Passed to _EngineRestricted.
 
@@ -523,7 +544,7 @@ def run_study_restricted(
             if 'Cov' in col:
                 ax.set_ylim([0.0, 1.05])
         plt.suptitle('Restricted: (rho_1, rho_2, sigma, alpha) with pi_1 = 0.5',
-                      fontsize=14, fontweight='bold')
+                     fontsize=14, fontweight='bold')
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, 'convergence_restr.png'),
                     dpi=300, bbox_inches='tight')

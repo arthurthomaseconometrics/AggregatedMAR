@@ -9,6 +9,13 @@ where sigma = varsigma_1 + varsigma_2 and pi_1 = varsigma_1 / sigma.
 All diagnostics and confidence intervals are then computed on the
 transformed parameters, which are expected to have smaller finite-sample bias.
 
+Convention (u, v):
+    u is associated with X_t  (Y[:-1])
+    v is associated with X_{t+1} (Y[1:])
+This matches the theoretical CF decomposition:
+    u*X_{j,t} + v*X_{j,t+1} = (rho_j*u + v)*X_{j,t+1} + u*eps_{j,t}
+giving |rho_j*u + v|^alpha and |u|^alpha terms in vectorized_tcf.
+
 Usage:
     from subsampling_reparam import run_study_reparam
 
@@ -38,15 +45,28 @@ warnings.filterwarnings('ignore')
 # =============================================================================
 
 def vectorized_ecf(Y, u_grid, v_grid):
-    """Compute empirical joint CF on (u,v) grid via broadcasting."""
-    Y1, Y0 = Y[1:], Y[:-1]
-    phase = (u_grid[:, None, None] * Y1[None, None, :]
-             + v_grid[None, :, None] * Y0[None, None, :])
+    """Compute empirical joint CF on (u,v) grid via broadcasting.
+
+    Convention: u is associated with X_t = Y[:-1],
+                v is associated with X_{t+1} = Y[1:].
+    This is consistent with the theoretical CF where
+    E[exp(i(u*X_t + v*X_{t+1}))] decomposes as
+    (rho_j*u + v)*X_{j,t+1} + u*eps_{j,t}.
+    """
+    Y0, Y1 = Y[:-1], Y[1:]   # Y0 = X_t, Y1 = X_{t+1}
+    phase = (u_grid[:, None, None] * Y0[None, None, :]
+             + v_grid[None, :, None] * Y1[None, None, :])
     return np.mean(np.exp(1j * phase), axis=2)
 
 
 def vectorized_tcf(params, u_grid, v_grid, J, alpha_fixed, beta_val):
-    """Compute theoretical joint CF on (u,v) grid."""
+    """Compute theoretical joint CF on (u,v) grid.
+
+    Implements E[exp(i(u*X_t + v*X_{t+1}))] for the MAR(0,1) aggregate.
+    The decomposition u*X_{j,t} + v*X_{j,t+1}
+                    = (rho_j*u + v)*X_{j,t+1} + u*eps_{j,t}
+    yields the two independent terms |rho_j*u + v|^alpha and |u|^alpha.
+    """
     rhos, varsigmas = params[:J], params[J:2*J]
     alpha = params[2*J] if alpha_fixed is None else alpha_fixed
     sigma = np.sum(varsigmas)
@@ -56,30 +76,34 @@ def vectorized_tcf(params, u_grid, v_grid, J, alpha_fixed, beta_val):
     if alpha != 1:
         tan_t = np.tan(np.pi * alpha / 2)
         for j in range(J):
-            a1 = U + rhos[j] * V
+            a1 = rhos[j] * U + V          # rho_j*u + v
             exponent += -pis[j]**alpha * sigma**alpha * (
-                np.abs(a1)**alpha * (1 - 1j*beta_val*np.sign(a1)*tan_t)
+                np.abs(a1)**alpha * (1 - 1j * beta_val * np.sign(a1) * tan_t)
                 / (1 - np.abs(rhos[j])**alpha)
-                + np.abs(V)**alpha * (1 - 1j*beta_val*np.sign(V)*tan_t))
+                + np.abs(U)**alpha * (1 - 1j * beta_val * np.sign(U) * tan_t))
     else:
         for j in range(J):
-            a1 = U + rhos[j] * V
-            exponent += -pis[j]*sigma*(
-                np.abs(a1)*(1+1j*beta_val*np.sign(a1)*2/np.pi
-                            *np.log(np.abs(a1)+1e-10))/(1-np.abs(rhos[j]))
-                + np.abs(V)*(1+1j*beta_val*np.sign(V)*2/np.pi
-                             *np.log(np.abs(V)+1e-10)))
+            a1 = rhos[j] * U + V          # rho_j*u + v
+            exponent += -pis[j] * sigma * (
+                np.abs(a1) * (1 + 1j * beta_val * np.sign(a1) * 2 / np.pi
+                              * np.log(np.abs(a1) + 1e-10))
+                / (1 - np.abs(rhos[j]))
+                + np.abs(U) * (1 + 1j * beta_val * np.sign(U) * 2 / np.pi
+                               * np.log(np.abs(U) + 1e-10)))
     return np.exp(exponent)
 
 
 def fast_objective(params, ecf, u_grid, v_grid, J, alpha_fixed, beta_val):
-    """MDE objective."""
+    """MDE objective: mean squared distance between ECF and TCF."""
     for j in range(J):
-        if params[j] <= 0 or params[j] >= 1: return 1e10
+        if params[j] <= 0 or params[j] >= 1:
+            return 1e10
     for j in range(J, 2*J):
-        if params[j] <= 0: return 1e10
+        if params[j] <= 0:
+            return 1e10
     a = params[2*J] if alpha_fixed is None else alpha_fixed
-    if a <= 0 or a > 2: return 1e10
+    if a <= 0 or a > 2:
+        return 1e10
     tcf = vectorized_tcf(params, u_grid, v_grid, J, alpha_fixed, beta_val)
     return float(np.mean(np.abs(ecf - tcf)**2))
 
@@ -106,7 +130,7 @@ def _transform_params(raw, J, fix_alpha, fix_beta):
     Output:    (rho_1, ..., rho_J, sigma, pi_1, ..., pi_{J-1}, [alpha], [beta])
 
     For J=2 with fix_beta=True, fix_alpha=False:
-        raw   = (rho_1, rho_2, varsigma_1, varsigma_2, alpha)
+        raw    = (rho_1, rho_2, varsigma_1, varsigma_2, alpha)
         output = (rho_1, rho_2, sigma, pi_1, alpha)
     """
     rhos = raw[:J]
@@ -299,7 +323,7 @@ class _EngineReparam:
         """Run M replications in parallel."""
         if ci_step is None:
             Nb = n - b + 1
-            ci_step = 1 #max(Nb // 100, 1)
+            ci_step = 1  # max(Nb // 100, 1)
 
         nno = n // b
         nov = len(range(0, n - b + 1, max(ci_step, 1)))
@@ -331,7 +355,7 @@ class _EngineReparam:
 
         # Full-sample estimates (in reparam space)
         ta = np.array([r['theta_n'] for r in reps
-                        if not np.any(np.isnan(r['theta_n']))])
+                       if not np.any(np.isnan(r['theta_n']))])
         a['theta_n_mean'] = {}
         a['theta_n_std'] = {}
         a['true_params_est'] = {}
@@ -471,7 +495,7 @@ def run_study_reparam(sample_sizes: List[int] = [250, 500, 1000, 10000],
         b_exponent: Block size exponent (b = floor(n^exp)). Default 2/3.
         n_cores: Cores for parallelization (-1 = all).
         seed: Base random seed.
-        ci_step: Override thinning step (None = auto ~100 blocks).
+        ci_step: Override thinning step (None = auto ci_step=1).
         output_dir: Where to save .txt, .csv, .png files.
         **engine_kwargs: Passed to _EngineReparam (true_params, alpha, etc.)
 
@@ -543,7 +567,7 @@ def run_study_reparam(sample_sizes: List[int] = [250, 500, 1000, 10000],
             if 'Cov' in col:
                 ax.set_ylim([0.0, 1.05])
         plt.suptitle('Reparameterized: (rho_1, rho_2, sigma, pi_1, alpha)',
-                      fontsize=14, fontweight='bold')
+                     fontsize=14, fontweight='bold')
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, 'convergence_plot.png'),
                     dpi=300, bbox_inches='tight')

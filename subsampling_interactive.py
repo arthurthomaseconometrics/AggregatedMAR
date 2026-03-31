@@ -31,11 +31,18 @@ warnings.filterwarnings('ignore')
 # Standalone functions (top-level for joblib pickling)
 # =============================================================================
 
+
 def vectorized_ecf(Y, u_grid, v_grid):
-    """Compute empirical joint CF on (u,v) grid via broadcasting."""
-    Y0, Y1 = Y[:-1], Y[1:]
-    phase = (u_grid * Y0 + v_grid * Y1)
+    """Compute empirical joint CF on (u,v) grid via broadcasting.
+
+    Convention: u is associated with X_t = Y[:-1],
+                v is associated with X_{t+1} = Y[1:].
+    """
+    Y0, Y1 = Y[:-1], Y[1:]   # Y0 = X_t, Y1 = X_{t+1}
+    phase = (u_grid[:, None, None] * Y0[None, None, :]
+             + v_grid[None, :, None] * Y1[None, None, :])
     return np.mean(np.exp(1j * phase), axis=2)
+
 
 def vectorized_tcf(params, u_grid, v_grid, J, alpha_fixed, beta_val):
     """Compute theoretical joint CF on (u,v) grid.
@@ -43,7 +50,7 @@ def vectorized_tcf(params, u_grid, v_grid, J, alpha_fixed, beta_val):
     Implements E[exp(i(u*X_t + v*X_{t+1}))] for the MAR(0,1) aggregate.
     The decomposition u*X_{j,t} + v*X_{j,t+1}
                     = (rho_j*u + v)*X_{j,t+1} + u*eps_{j,t}
-    yields the two independent terms |rho_j*u + v|^alpha and |u|^alpha.
+    yields |rho_j*u + v|^alpha and |u|^alpha.
     """
     rhos, varsigmas = params[:J], params[J:2*J]
     alpha = params[2*J] if alpha_fixed is None else alpha_fixed
@@ -69,6 +76,7 @@ def vectorized_tcf(params, u_grid, v_grid, J, alpha_fixed, beta_val):
                 + np.abs(U) * (1 + 1j * beta_val * np.sign(U) * 2 / np.pi
                                * np.log(np.abs(U) + 1e-10)))
     return np.exp(exponent)
+
 
 def fast_objective(params, ecf, u_grid, v_grid, J, alpha_fixed, beta_val):
     """MDE objective."""
