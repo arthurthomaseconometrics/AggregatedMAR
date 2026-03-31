@@ -275,7 +275,7 @@ class StableMixtureDeconvolution:
                     cf_theo = self.char_function(u, v, params)
                     
                     # Empirical characteristic function
-                    cf_emp = np.mean(np.exp(1j * (u * Y[1:] + v * Y[:-1])))
+                    cf_emp = np.mean(np.exp(1j * (u * Y[:-1] + v * Y[1:])))
                     
                     # Squared difference weighted
                     diff_sum += weights[(u, v)] * np.abs(cf_emp - cf_theo)**2
@@ -1278,7 +1278,7 @@ class StableMixtureDeconvolution:
                 sigma = sum(varsigmas)
                 pi_j = varsigmas[j] / sigma
                 
-                plt.title(f'Component X{j+1} (ρ{j+1}={rho_j:.2f}, π{j+1}={pi_j:.2f}, Correlation: {corr:.4f})')
+                plt.title(f'Component X{j+1} (Ï{j+1}={rho_j:.2f}, Ï€{j+1}={pi_j:.2f}, Correlation: {corr:.4f})')
             else:
                 plt.title(f'Component X{j+1} (Correlation: {corr:.4f})')
                 
@@ -1393,10 +1393,10 @@ class StableMixtureDeconvolution:
         for u in u_grid:
             for v in v_grid:
                 # Calculate empirical characteristic function
-                cf_emp = np.mean(np.exp(1j * (u*Y[1:] + v*Y[:-1])))
+                cf_emp = np.mean(np.exp(1j * (u*Y[:-1] + v*Y[1:])))
                 
                 # Variance component (V_n)
-                cf_values = np.exp(1j * (u*Y[1:] + v*Y[:-1]))
+                cf_values = np.exp(1j * (u*Y[:-1] + v*Y[1:]))
                 V_n = np.mean(np.abs(cf_values - cf_emp)**2)
                 
                 # Covariance component (R_n) - HAC method with Bartlett kernel
@@ -1858,7 +1858,7 @@ class StableMixtureDeconvolution:
                     suffix = param_name.split('_')[1]
                     symbol = f"{symbol}_{{{suffix}}}"
                 
-                ax.set_title(f'{symbol} (true: {param_true:.2f}, est: {param_mean:.2f}±{param_std:.2f})')
+                ax.set_title(f'{symbol} (true: {param_true:.2f}, est: {param_mean:.2f}Â±{param_std:.2f})')
                 ax.set_xlabel('Value')
                 ax.set_ylabel('Frequency')
                 
@@ -1997,7 +1997,7 @@ class StableMixtureDeconvolution:
             plt.plot(range(start_idx, end_idx), X_true[j][start_idx:end_idx], colors[j % len(colors)] + '-', label='True')
             plt.plot(range(start_idx, end_idx), X_filtered[j][start_idx:end_idx], colors[j % len(colors)] + '--', label='Filtered')
             
-            plt.title(f'Component X{j+1} - Zoom (ρ{j+1}={params_dict[f"rho_{j+1}"]:.2f})')
+            plt.title(f'Component X{j+1} - Zoom (Ï{j+1}={params_dict[f"rho_{j+1}"]:.2f})')
             plt.legend()
             plt.grid(True)
         
