@@ -1,15 +1,18 @@
 """
-Interactive Subsampling Functions for VSCode
+Interactive Subsampling Functions with Gaussian Weights
+
+Modified version using Gaussian weights w(u,v) = exp(-kappa*(u^2 + v^2))
+as specified in Assumption C2 of main_v15.tex.
 
 Usage:
     from subsampling_interactive import run_sensitivity, run_study
 
     # Block size sensitivity (fast, M=100)
-    run_sensitivity(sample_sizes=[500, 1000, 2000], M=100, n_cores=64)
+    run_sensitivity(sample_sizes=[500, 1000, 2000], M=100, n_cores=64, kappa=1.0)
 
     # Full convergence study
     run_study(sample_sizes=[250, 500, 1000, 10000, 50000],
-              M=500, b_exponent=0.75, n_cores=64)
+              M=500, b_exponent=0.75, n_cores=64, kappa=1.0)
 """
 
 import numpy as np
@@ -78,26 +81,55 @@ def vectorized_tcf(params, u_grid, v_grid, J, alpha_fixed, beta_val):
     return np.exp(exponent)
 
 
-def fast_objective(params, ecf, u_grid, v_grid, J, alpha_fixed, beta_val):
-    """MDE objective."""
+def gaussian_weights(u_grid, v_grid, kappa=1.0):
+    """
+    Compute Gaussian weights as per Assumption C2.
+    
+    w(u, v) = exp(-kappa * (u^2 + v^2))
+    
+    Args:
+        u_grid: Grid of u values
+        v_grid: Grid of v values
+        kappa: Decay parameter (must be > 0)
+        
+    Returns:
+        2D array of weights
+    """
+    U, V = np.meshgrid(u_grid, v_grid, indexing='ij')
+    return np.exp(-kappa * (U**2 + V**2))
+
+
+def fast_objective(params, ecf, u_grid, v_grid, J, alpha_fixed, beta_val, kappa=1.0):
+    """
+    MDE objective with Gaussian weights.
+    
+    D(theta) = sum_{u,v} w(u,v) * |varphi_n(u,v) - varphi(u,v;theta)|^2
+    where w(u,v) = exp(-kappa*(u^2 + v^2))
+    """
     for j in range(J):
         if params[j] <= 0 or params[j] >= 1: return 1e10
     for j in range(J, 2*J):
         if params[j] <= 0: return 1e10
     a = params[2*J] if alpha_fixed is None else alpha_fixed
     if a <= 0 or a > 2: return 1e10
+    
     tcf = vectorized_tcf(params, u_grid, v_grid, J, alpha_fixed, beta_val)
-    return float(np.mean(np.abs(ecf - tcf)**2))
+    diff = np.abs(ecf - tcf)**2
+    
+    # Apply Gaussian weights
+    weights = gaussian_weights(u_grid, v_grid, kappa)
+    
+    return float(np.sum(weights * diff))
 
 
 def estimate_sub(Y_sub, x0, u_grid, v_grid, J, bounds,
-                 alpha_fixed, beta_val, maxiter=200):
-    """Fast MDE on subsample with warm start."""
+                 alpha_fixed, beta_val, kappa, maxiter=200):
+    """Fast MDE on subsample with warm start and Gaussian weights."""
     try:
         ecf = vectorized_ecf(Y_sub, u_grid, v_grid)
         res = optimize.minimize(
             fast_objective, x0,
-            args=(ecf, u_grid, v_grid, J, alpha_fixed, beta_val),
+            args=(ecf, u_grid, v_grid, J, alpha_fixed, beta_val, kappa),
             bounds=bounds, method='L-BFGS-B',
             options={'maxiter': maxiter, 'ftol': 1e-10})
         return res.x
@@ -114,8 +146,8 @@ def _true_est(tp, J, fa, fb):
 
 
 def _one_rep(seed, n, b, tp_full, tp_est, J, av, bv, fa, fb,
-             ug, vg, bounds, pnames, clevels, ci_step):
-    """Single MC replication."""
+             ug, vg, bounds, pnames, clevels, ci_step, kappa):
+    """Single MC replication with Gaussian weights."""
     from stablemixture import StableMixtureDeconvolution
     af = av if fa else None
     p = len(pnames)
@@ -130,7 +162,7 @@ def _one_rep(seed, n, b, tp_full, tp_est, J, av, bv, fa, fb,
     # Non-overlapping blocks
     nno = n // b
     no_e = np.array([estimate_sub(Y[i*b:(i+1)*b], tn, ug, vg, J,
-                                  bounds, af, bv, mxi) for i in range(nno)])
+                                  bounds, af, bv, kappa, mxi) for i in range(nno)])
     vld = ~np.isnan(no_e).any(axis=1); no_e = no_e[vld]
     sd_no = np.sqrt(b)*(no_e - tn) if len(no_e) >= 3 else np.full((0,p), np.nan)
 
@@ -138,7 +170,7 @@ def _one_rep(seed, n, b, tp_full, tp_est, J, av, bv, fa, fb,
     Nb = n - b + 1
     oi = list(range(0, Nb, max(ci_step, 1)))
     ov_e = np.array([estimate_sub(Y[i:i+b], tn, ug, vg, J,
-                                  bounds, af, bv, mxi) for i in oi])
+                                  bounds, af, bv, kappa, mxi) for i in oi])
     vld2 = ~np.isnan(ov_e).any(axis=1); ov_e = ov_e[vld2]
     sd_ov = np.sqrt(b)*(ov_e - tn) if len(ov_e) >= 3 else np.full((0,p), np.nan)
 
@@ -204,14 +236,16 @@ def _one_rep(seed, n, b, tp_full, tp_est, J, av, bv, fa, fb,
 # =============================================================================
 
 class _Engine:
-    """Core engine shared by run_study and run_sensitivity."""
+    """Core engine with Gaussian weights support."""
 
     def __init__(self, J=2, true_params=(0.8,0.3,0.7,0.9,1.5,0),
-                 alpha=1.5, beta=0.0, fix_alpha=False, fix_beta=True):
+                 alpha=1.5, beta=0.0, fix_alpha=False, fix_beta=True, kappa=1.0):
         from stablemixture import StableMixtureDeconvolution
         self.J, self.alpha, self.beta = J, alpha, beta
         self.fix_alpha, self.fix_beta = fix_alpha, fix_beta
         self.true_params = true_params
+        self.kappa = kappa
+        
         tmp = StableMixtureDeconvolution(
             num_components=J, alpha_value=alpha, beta_value=beta,
             fix_alpha=fix_alpha, fix_beta=fix_beta, verbose=False)
@@ -225,15 +259,15 @@ class _Engine:
 
     def mc(self, n, M, b, seed=42, conf_levels=(0.90,0.95),
            ci_step=None, n_cores=-1, backend='loky'):
-        """Run M replications in parallel."""
+        """Run M replications in parallel with Gaussian weights."""
         if ci_step is None:
             Nb = n - b + 1
-            ci_step = 1#max(Nb // 100, 1)
+            ci_step = 1
 
         nno = n // b
         nov = len(range(0, n-b+1, max(ci_step,1)))
-        print(f"  n={n}, b={b}, M={M} | non-ov={nno}, ov(step={ci_step})={nov}, "
-              f"est/rep={nno+nov}")
+        print(f"  n={n}, b={b}, M={M}, κ={self.kappa} | non-ov={nno}, "
+              f"ov(step={ci_step})={nov}, est/rep={nno+nov}")
 
         t0 = time.time()
         reps = Parallel(n_jobs=n_cores, backend=backend, verbose=5)(
@@ -241,13 +275,14 @@ class _Engine:
                 seed+m, n, b, self.true_params, self.tp_est,
                 self.J, self.alpha, self.beta, self.fix_alpha, self.fix_beta,
                 self.u_grid, self.v_grid, self.bounds, self.param_names,
-                conf_levels, ci_step)
+                conf_levels, ci_step, self.kappa)
             for m in range(M))
         print(f"  Done in {time.time()-t0:.0f}s")
         return self._agg(reps, n, b, M, conf_levels)
 
     def _agg(self, reps, n, b, M, cl):
-        a = {'n':n, 'b':b, 'M':M, 'param_names':self.param_names, 'conf_levels':cl,
+        a = {'n':n, 'b':b, 'M':M, 'kappa':self.kappa,
+             'param_names':self.param_names, 'conf_levels':cl,
              'moments':{p:{} for p in self.param_names},
              'rej_rates':{p:{} for p in self.param_names},
              'coverage':{l:{} for l in cl}, 'ci_width':{l:{} for l in cl},
@@ -321,7 +356,8 @@ class _Engine:
         ps = agg['param_names']; np_ = len(ps)
         fig, ax = plt.subplots(np_, 3, figsize=(15, 4*np_))
         if np_==1: ax = ax.reshape(1,-1)
-        fig.suptitle(f"Diagnostics n={agg['n']}, b={agg['b']}, M={agg['M']}", fontsize=13)
+        fig.suptitle(f"Diagnostics n={agg['n']}, b={agg['b']}, M={agg['M']}, κ={agg['kappa']}", 
+                    fontsize=13)
         for i,p in enumerate(ps):
             z = np.array(agg['pooled_no'][p]); z = z[np.isfinite(z)]
             if len(z)<10: continue
@@ -347,18 +383,20 @@ class _Engine:
 def run_study(sample_sizes: List[int] = [250, 500, 1000, 10000],
               M: int = 500,
               b_exponent: float = 0.75,
+              kappa: float = 1.0,
               n_cores: int = -1,
               seed: int = 42,
               ci_step: Optional[int] = None,
               output_dir: str = 'results',
               **engine_kwargs):
     """
-    Full convergence study across sample sizes.
+    Full convergence study across sample sizes with Gaussian weights.
 
     Args:
         sample_sizes: List of n values.
         M: MC replications (500 is enough; more does NOT improve coverage).
         b_exponent: Block size exponent (b = floor(n^exp)). Default 0.75.
+        kappa: Gaussian weight decay parameter (default: 1.0).
         n_cores: Cores for parallelization (-1 = all).
         seed: Base random seed.
         ci_step: Override thinning step (None = auto ~100 blocks).
@@ -369,9 +407,14 @@ def run_study(sample_sizes: List[int] = [250, 500, 1000, 10000],
         Dict {n: summary_DataFrame}.
     """
     os.makedirs(output_dir, exist_ok=True)
-    eng = _Engine(**engine_kwargs)
+    eng = _Engine(kappa=kappa, **engine_kwargs)
     all_df = {}
     all_agg = {}
+
+    print(f"\n{'='*70}")
+    print(f"SUBSAMPLING WITH GAUSSIAN WEIGHTS")
+    print(f"  Weight function: w(u,v) = exp(-{kappa}*(u^2 + v^2))")
+    print(f"{'='*70}")
 
     for n in sample_sizes:
         b = int(np.floor(n ** b_exponent))
@@ -387,7 +430,8 @@ def run_study(sample_sizes: List[int] = [250, 500, 1000, 10000],
 
         # Save .txt
         with open(os.path.join(output_dir, f'summary_n{n}.txt'), 'w') as f:
-            f.write(f"Subsampling Results for n={n} (b={b}, M={M})\n")
+            f.write(f"Subsampling Results (Gaussian Weights κ={kappa})\n")
+            f.write(f"n={n}, b={b}, M={M}\n")
             f.write("="*80 + "\n")
             f.write(df.to_string(index=False) + "\n")
 
@@ -399,13 +443,15 @@ def run_study(sample_sizes: List[int] = [250, 500, 1000, 10000],
 
     # Combined .txt
     with open(os.path.join(output_dir, 'summary_all.txt'), 'w') as f:
-        f.write("SUBSAMPLING CONVERGENCE STUDY\n" + "="*80 + "\n\n")
+        f.write("SUBSAMPLING CONVERGENCE STUDY (GAUSSIAN WEIGHTS)\n")
+        f.write(f"Weight function: w(u,v) = exp(-{kappa}*(u^2 + v^2))\n")
+        f.write("="*80 + "\n\n")
         for n in sample_sizes:
             a = all_agg[n]
-            f.write(f"n={n}  (b={a['b']}, M={a['M']})\n" + "-"*80 + "\n")
+            f.write(f"n={n}  (b={a['b']}, M={a['M']}, κ={a['kappa']})\n" + "-"*80 + "\n")
             f.write(all_df[n].to_string(index=False) + "\n\n")
 
-    # Convergence plot (8 panels: diagnostics + both CI types)
+    # Convergence plot
     if len(sample_sizes) >= 2:
         ns = sorted(sample_sizes)
         params = all_df[ns[0]]['Parameter'].tolist()
@@ -442,12 +488,13 @@ def run_study(sample_sizes: List[int] = [250, 500, 1000, 10000],
 def run_sensitivity(sample_sizes: List[int] = [500, 1000, 2000],
                     M: int = 100,
                     exponents: List[float] = [0.60, 2/3, 0.70, 0.75, 0.80],
+                    kappa: float = 1.0,
                     n_cores: int = -1,
                     seed: int = 42,
                     output_dir: str = 'results_sensitivity',
                     **engine_kwargs):
     """
-    Block size sensitivity analysis.
+    Block size sensitivity analysis with Gaussian weights.
 
     For each (n, exponent), runs M replications and reports avg Ratio
     and avg coverage. Helps pick the best b exponent.
@@ -456,6 +503,7 @@ def run_sensitivity(sample_sizes: List[int] = [500, 1000, 2000],
         sample_sizes: List of n values.
         M: Replications per (n, exponent) — 100 is enough.
         exponents: Block size exponents to test.
+        kappa: Gaussian weight decay parameter (default: 1.0).
         n_cores: Cores.
         seed: Base seed.
         output_dir: Where to save results.
@@ -465,8 +513,12 @@ def run_sensitivity(sample_sizes: List[int] = [500, 1000, 2000],
         Dict {n: sensitivity_DataFrame}.
     """
     os.makedirs(output_dir, exist_ok=True)
-    eng = _Engine(**engine_kwargs)
+    eng = _Engine(kappa=kappa, **engine_kwargs)
     all_sens = {}
+
+    print(f"\n{'='*70}")
+    print(f"SENSITIVITY ANALYSIS WITH GAUSSIAN WEIGHTS (κ={kappa})")
+    print(f"{'='*70}")
 
     for n in sample_sizes:
         print(f"\n{'#'*65}")
@@ -502,7 +554,8 @@ def run_sensitivity(sample_sizes: List[int] = [500, 1000, 2000],
         all_sens[n] = sens_df
 
         with open(os.path.join(output_dir, f'sensitivity_n{n}.txt'), 'w') as f:
-            f.write(f"Block Size Sensitivity for n={n} (M={M})\n")
+            f.write(f"Block Size Sensitivity (Gaussian Weights κ={kappa})\n")
+            f.write(f"n={n}, M={M}\n")
             f.write("="*60 + "\n")
             f.write(sens_df.to_string(index=False) + "\n")
         print(f"\n{sens_df.to_string(index=False)}")

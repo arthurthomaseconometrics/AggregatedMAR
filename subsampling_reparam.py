@@ -1,5 +1,8 @@
 """
-Subsampling with Reparameterization (sigma, pi_1)
+Subsampling with Reparameterization (sigma, pi_1) and Gaussian Weights
+
+Modified version using Gaussian weights w(u,v) = exp(-kappa*(u^2 + v^2))
+as specified in Assumption C2 of main_v15.tex.
 
 The MDE estimation remains in the original (rho_j, varsigma_j, alpha) space.
 After each subsample estimation, results are mapped to the transformed space:
@@ -21,7 +24,7 @@ Usage:
 
     run_study_reparam(
         sample_sizes=[250, 500, 1000, 10000, 50000, 100000],
-        M=200, b_exponent=2/3, n_cores=-1
+        M=200, b_exponent=2/3, kappa=1.0, n_cores=-1
     )
 """
 
@@ -93,8 +96,31 @@ def vectorized_tcf(params, u_grid, v_grid, J, alpha_fixed, beta_val):
     return np.exp(exponent)
 
 
-def fast_objective(params, ecf, u_grid, v_grid, J, alpha_fixed, beta_val):
-    """MDE objective: mean squared distance between ECF and TCF."""
+def gaussian_weights(u_grid, v_grid, kappa=1.0):
+    """
+    Compute Gaussian weights as per Assumption C2.
+    
+    w(u, v) = exp(-kappa * (u^2 + v^2))
+    
+    Args:
+        u_grid: Grid of u values
+        v_grid: Grid of v values
+        kappa: Decay parameter (must be > 0)
+        
+    Returns:
+        2D array of weights
+    """
+    U, V = np.meshgrid(u_grid, v_grid, indexing='ij')
+    return np.exp(-kappa * (U**2 + V**2))
+
+
+def fast_objective(params, ecf, u_grid, v_grid, J, alpha_fixed, beta_val, kappa=1.0):
+    """
+    MDE objective with Gaussian weights.
+    
+    D(theta) = sum_{u,v} w(u,v) * |varphi_n(u,v) - varphi(u,v;theta)|^2
+    where w(u,v) = exp(-kappa*(u^2 + v^2))
+    """
     for j in range(J):
         if params[j] <= 0 or params[j] >= 1:
             return 1e10
@@ -104,18 +130,24 @@ def fast_objective(params, ecf, u_grid, v_grid, J, alpha_fixed, beta_val):
     a = params[2*J] if alpha_fixed is None else alpha_fixed
     if a <= 0 or a > 2:
         return 1e10
+    
     tcf = vectorized_tcf(params, u_grid, v_grid, J, alpha_fixed, beta_val)
-    return float(np.mean(np.abs(ecf - tcf)**2))
+    diff = np.abs(ecf - tcf)**2
+    
+    # Apply Gaussian weights
+    weights = gaussian_weights(u_grid, v_grid, kappa)
+    
+    return float(np.sum(weights * diff))
 
 
 def estimate_sub(Y_sub, x0, u_grid, v_grid, J, bounds,
-                 alpha_fixed, beta_val, maxiter=200):
-    """Fast MDE on subsample with warm start."""
+                 alpha_fixed, beta_val, kappa, maxiter=200):
+    """Fast MDE on subsample with warm start and Gaussian weights."""
     try:
         ecf = vectorized_ecf(Y_sub, u_grid, v_grid)
         res = optimize.minimize(
             fast_objective, x0,
-            args=(ecf, u_grid, v_grid, J, alpha_fixed, beta_val),
+            args=(ecf, u_grid, v_grid, J, alpha_fixed, beta_val, kappa),
             bounds=bounds, method='L-BFGS-B',
             options={'maxiter': maxiter, 'ftol': 1e-10})
         return res.x
@@ -179,8 +211,8 @@ def _reparam_true(tp_full, J, fix_alpha, fix_beta):
 
 
 def _one_rep_reparam(seed, n, b, tp_full, tp_reparam, J, av, bv, fa, fb,
-                     ug, vg, bounds, pnames_reparam, clevels, ci_step):
-    """Single MC replication with post-estimation reparameterization."""
+                     ug, vg, bounds, pnames_reparam, clevels, ci_step, kappa):
+    """Single MC replication with post-estimation reparameterization and Gaussian weights."""
     from stablemixture import StableMixtureDeconvolution
     af = av if fa else None
     p = len(pnames_reparam)
@@ -198,7 +230,7 @@ def _one_rep_reparam(seed, n, b, tp_full, tp_reparam, J, av, bv, fa, fb,
     # --- Non-overlapping blocks ---
     nno = n // b
     no_raw = np.array([estimate_sub(Y[i*b:(i+1)*b], tn_raw, ug, vg, J,
-                                    bounds, af, bv, mxi) for i in range(nno)])
+                                    bounds, af, bv, kappa, mxi) for i in range(nno)])
     vld = ~np.isnan(no_raw).any(axis=1)
     no_raw = no_raw[vld]
     # Transform each subsample estimate
@@ -212,7 +244,7 @@ def _one_rep_reparam(seed, n, b, tp_full, tp_reparam, J, av, bv, fa, fb,
     Nb = n - b + 1
     oi = list(range(0, Nb, max(ci_step, 1)))
     ov_raw = np.array([estimate_sub(Y[i:i+b], tn_raw, ug, vg, J,
-                                    bounds, af, bv, mxi) for i in oi])
+                                    bounds, af, bv, kappa, mxi) for i in oi])
     vld2 = ~np.isnan(ov_raw).any(axis=1)
     ov_raw = ov_raw[vld2]
     if len(ov_raw) >= 3:
@@ -289,19 +321,20 @@ def _one_rep_reparam(seed, n, b, tp_full, tp_reparam, J, av, bv, fa, fb,
 
 
 # =============================================================================
-# Engine (reparameterized version)
+# Engine (reparameterized version with Gaussian weights)
 # =============================================================================
 
 class _EngineReparam:
-    """Core engine with post-estimation reparameterization."""
+    """Core engine with post-estimation reparameterization and Gaussian weights."""
 
     def __init__(self, J=2, true_params=(0.8, 0.3, 0.7, 0.9, 1.5, 0),
-                 alpha=1.5, beta=0.0, fix_alpha=False, fix_beta=True):
+                 alpha=1.5, beta=0.0, fix_alpha=False, fix_beta=True, kappa=1.0):
         from stablemixture import StableMixtureDeconvolution
         self.J = J
         self.alpha, self.beta = alpha, beta
         self.fix_alpha, self.fix_beta = fix_alpha, fix_beta
         self.true_params = true_params
+        self.kappa = kappa
 
         # Original-space bounds (estimation unchanged)
         self.bounds = [(0.01, 0.99)] * J + [(0.005, 5.0)] * J
@@ -320,14 +353,14 @@ class _EngineReparam:
 
     def mc(self, n, M, b, seed=42, conf_levels=(0.90, 0.95),
            ci_step=None, n_cores=-1, backend='loky'):
-        """Run M replications in parallel."""
+        """Run M replications in parallel with Gaussian weights."""
         if ci_step is None:
             Nb = n - b + 1
-            ci_step = 1  # max(Nb // 100, 1)
+            ci_step = 1
 
         nno = n // b
         nov = len(range(0, n - b + 1, max(ci_step, 1)))
-        print(f"  n={n}, b={b}, M={M} | non-ov={nno}, "
+        print(f"  n={n}, b={b}, M={M}, κ={self.kappa} | non-ov={nno}, "
               f"ov(step={ci_step})={nov}, est/rep={nno + nov}")
 
         t0 = time.time()
@@ -337,7 +370,7 @@ class _EngineReparam:
                 self.J, self.alpha, self.beta,
                 self.fix_alpha, self.fix_beta,
                 self.u_grid, self.v_grid, self.bounds,
-                self.param_names, conf_levels, ci_step)
+                self.param_names, conf_levels, ci_step, self.kappa)
             for m in range(M))
         print(f"  Done in {time.time() - t0:.0f}s")
         return self._agg(reps, n, b, M, conf_levels)
@@ -345,7 +378,7 @@ class _EngineReparam:
     def _agg(self, reps, n, b, M, cl):
         """Aggregate results across replications."""
         pnames = self.param_names
-        a = {'n': n, 'b': b, 'M': M,
+        a = {'n': n, 'b': b, 'M': M, 'kappa': self.kappa,
              'param_names': pnames, 'conf_levels': cl,
              'moments': {p: {} for p in pnames},
              'rej_rates': {p: {} for p in pnames},
@@ -442,7 +475,7 @@ class _EngineReparam:
         if np_ == 1:
             ax = ax.reshape(1, -1)
         fig.suptitle(
-            f"Diagnostics (reparam) n={agg['n']}, b={agg['b']}, M={agg['M']}",
+            f"Diagnostics (reparam) n={agg['n']}, b={agg['b']}, M={agg['M']}, κ={agg['kappa']}",
             fontsize=13)
         for i, p in enumerate(ps):
             z = np.array(agg['pooled_no'][p])
@@ -478,13 +511,14 @@ class _EngineReparam:
 def run_study_reparam(sample_sizes: List[int] = [250, 500, 1000, 10000],
                       M: int = 200,
                       b_exponent: float = 2/3,
+                      kappa: float = 1.0,
                       n_cores: int = -1,
                       seed: int = 42,
                       ci_step: Optional[int] = None,
                       output_dir: str = 'results_reparam',
                       **engine_kwargs):
     """
-    Full convergence study with (sigma, pi_1) reparameterization.
+    Full convergence study with (sigma, pi_1) reparameterization and Gaussian weights.
 
     Estimation is performed in the original (varsigma_1, varsigma_2) space.
     All diagnostics and CIs use the transformed (sigma, pi_1) space.
@@ -493,6 +527,7 @@ def run_study_reparam(sample_sizes: List[int] = [250, 500, 1000, 10000],
         sample_sizes: List of n values.
         M: MC replications.
         b_exponent: Block size exponent (b = floor(n^exp)). Default 2/3.
+        kappa: Gaussian weight decay parameter (default: 1.0).
         n_cores: Cores for parallelization (-1 = all).
         seed: Base random seed.
         ci_step: Override thinning step (None = auto ci_step=1).
@@ -503,9 +538,15 @@ def run_study_reparam(sample_sizes: List[int] = [250, 500, 1000, 10000],
         Dict {n: summary_DataFrame}.
     """
     os.makedirs(output_dir, exist_ok=True)
-    eng = _EngineReparam(**engine_kwargs)
+    eng = _EngineReparam(kappa=kappa, **engine_kwargs)
     all_df = {}
     all_agg = {}
+
+    print(f"\n{'='*70}")
+    print(f"SUBSAMPLING WITH REPARAMETERIZATION AND GAUSSIAN WEIGHTS")
+    print(f"  Weight function: w(u,v) = exp(-{kappa}*(u^2 + v^2))")
+    print(f"  Reparameterization: (sigma, pi_1) instead of (varsigma_1, varsigma_2)")
+    print(f"{'='*70}")
 
     for n in sample_sizes:
         b = int(np.floor(n ** b_exponent))
@@ -521,7 +562,8 @@ def run_study_reparam(sample_sizes: List[int] = [250, 500, 1000, 10000],
 
         # Save per-n results
         with open(os.path.join(output_dir, f'summary_n{n}.txt'), 'w') as f:
-            f.write(f"Subsampling Results (reparam) for n={n} (b={b}, M={M})\n")
+            f.write(f"Subsampling Results (reparam + Gaussian weights κ={kappa})\n")
+            f.write(f"n={n}, b={b}, M={M}\n")
             f.write("=" * 80 + "\n")
             f.write(df.to_string(index=False) + "\n")
         df.to_csv(os.path.join(output_dir, f'summary_n{n}.csv'), index=False)
@@ -529,11 +571,12 @@ def run_study_reparam(sample_sizes: List[int] = [250, 500, 1000, 10000],
 
     # Combined summary
     with open(os.path.join(output_dir, 'summary_all.txt'), 'w') as f:
-        f.write("SUBSAMPLING CONVERGENCE STUDY (REPARAMETERIZED)\n")
+        f.write("SUBSAMPLING CONVERGENCE STUDY (REPARAMETERIZED + GAUSSIAN WEIGHTS)\n")
+        f.write(f"Weight function: w(u,v) = exp(-{kappa}*(u^2 + v^2))\n")
         f.write("=" * 80 + "\n\n")
         for n in sample_sizes:
             a = all_agg[n]
-            f.write(f"n={n}  (b={a['b']}, M={a['M']})\n")
+            f.write(f"n={n}  (b={a['b']}, M={a['M']}, κ={a['kappa']})\n")
             f.write("-" * 80 + "\n")
             f.write(all_df[n].to_string(index=False) + "\n\n")
 
@@ -566,7 +609,7 @@ def run_study_reparam(sample_sizes: List[int] = [250, 500, 1000, 10000],
             ax.set_xscale('log')
             if 'Cov' in col:
                 ax.set_ylim([0.0, 1.05])
-        plt.suptitle('Reparameterized: (rho_1, rho_2, sigma, pi_1, alpha)',
+        plt.suptitle(f'Reparameterized + Gaussian weights (κ={kappa}): (rho_1, rho_2, sigma, pi_1, alpha)',
                      fontsize=14, fontweight='bold')
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, 'convergence_plot.png'),

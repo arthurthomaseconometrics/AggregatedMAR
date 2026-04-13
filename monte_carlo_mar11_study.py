@@ -517,7 +517,7 @@ def estimate_mar11_aggregate(X: np.ndarray,
         try:
             res = optimize.minimize(objective, x0, method=method,
                                     bounds=bounds,
-                                    options={'maxiter': 500, 'disp': False})
+                                    options={'maxiter': 500})
             if res.fun < best_obj:
                 best_obj   = res.fun
                 best_theta = res.x
@@ -944,34 +944,34 @@ def main():
     Demonstrate the corrected Monte Carlo study.
     """
     true_params = dict(
-        psi1=0.8,      psi2=0.7,
-        varsigma1=0.8, varsigma2=0.6,
-        phi1=0.3,      phi2=0.5,
-        alpha=1.5,     beta=0.0,
+    psi1=0.7,      psi2=0.4,       # Éviter les valeurs extrêmes
+    varsigma1=0.8, varsigma2=0.6,  # Valeurs plus équilibrées
+    phi1=0.3,      phi2=0.5,       # phi modérés, loin de 1
+    alpha=1.5,     beta=0.0,
     )
 
     df_raw, df_summary = run_monte_carlo_study(
         **true_params,
         # estimation
-        estimate_alpha=True,
+        estimate_alpha=False,
         estimate_beta=False,
         estimate_phi=True,
         # MC
-        n_replications=500,
-        sample_sizes=[1000],
+        n_replications=1000,
+        sample_sizes=[10000],
         n_jobs=-1,
         seed_base=42,
         # grid — matching the paper: linspace on [-0.5, 0.5]
         # The paper uses "10 equally spaced points in [-0.5, 0.5]"
         # with uniform weights.  For MAR(1,1) (7 params), we increase
         # to 15 grid points to provide 15^2 = 225 moment conditions.
-        n_grid=15,
+        n_grid=40,
         kappa=0.5,
         grid_type='linspace',
-        u_max=0.5,
+        u_max=10,
         scale=1.0,           # irrelevant for linspace
         # multi-start
-        n_starts=8,
+        n_starts=3,
         # output
         verbose=True,
         output_dir=None,
