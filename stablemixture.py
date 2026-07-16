@@ -273,9 +273,17 @@ class StableMixtureDeconvolution:
                 for v in v_grid:
                     # Theoretical characteristic function
                     cf_theo = self.char_function(u, v, params)
-                    
+
                     # Empirical characteristic function
-                    cf_emp = np.mean(np.exp(1j * (u * Y[:-1] + v * Y[1:])))
+                    # BUGFIX (audit 2026-07): char_function is the CF of the pair
+                    # (Y_t, Y_{t-1}) with u <-> Y_t (later obs) and v <-> Y_{t-1}
+                    # (earlier obs). The ECF must use the same pairing:
+                    # u*Y[1:] + v*Y[:-1]. The previous pairing (u*Y[:-1] + v*Y[1:])
+                    # swapped u and v; since the pair CF of a noncausal stable
+                    # process is NOT exchangeable for alpha < 2, this induced a
+                    # large asymptotic bias in the full-sample estimates
+                    # (e.g. rho_1 -> 0.94 instead of 0.80 on simulated data).
+                    cf_emp = np.mean(np.exp(1j * (u * Y[1:] + v * Y[:-1])))
                     
                     # Squared difference weighted
                     diff_sum += weights[(u, v)] * np.abs(cf_emp - cf_theo)**2
@@ -1393,10 +1401,13 @@ class StableMixtureDeconvolution:
         for u in u_grid:
             for v in v_grid:
                 # Calculate empirical characteristic function
-                cf_emp = np.mean(np.exp(1j * (u*Y[:-1] + v*Y[1:])))
-                
+                # BUGFIX (audit 2026-07): same pairing correction as in
+                # objective_function - u pairs with the later observation
+                # to match char_function's (Y_t, Y_{t-1}) convention.
+                cf_emp = np.mean(np.exp(1j * (u*Y[1:] + v*Y[:-1])))
+
                 # Variance component (V_n)
-                cf_values = np.exp(1j * (u*Y[:-1] + v*Y[1:]))
+                cf_values = np.exp(1j * (u*Y[1:] + v*Y[:-1]))
                 V_n = np.mean(np.abs(cf_values - cf_emp)**2)
                 
                 # Covariance component (R_n) - HAC method with Bartlett kernel
