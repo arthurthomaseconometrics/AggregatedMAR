@@ -184,12 +184,22 @@ def compute_ecf_grid(X: np.ndarray,
     """
     Compute the bivariate empirical CF on the full (u, v) grid.
 
-    phi_n(u_i, v_k) = (1/(n-1)) sum_{t=2}^{n} exp(i*(u_i*X_t + v_k*X_{t-1}))
+    phi_n(u_i, v_k) = (1/(n-1)) sum_{t=1}^{n-1} exp(i*(u_i*X_t + v_k*X_{t+1}))
+
+    BUGFIX (audit 2026-07): the (u, v) pairing must match the paper's
+    convention used by theoretical_cf_mar11, i.e. the pair (X_t, X_{t+1})
+    with u <-> X_t (present) and v <-> X_{t+1} (FUTURE observation),
+    exactly as in vectorized_ecf of AggregatedMAR-main/subsampling_reparam.py.
+    The previous code paired v with the PAST observation (X_{t-1}), which
+    swaps u and v relative to the theoretical CF; since the MAR(1,1) pair
+    CF is not exchangeable in (u, v), this misspecified the MDE objective
+    and produced the large biases seen in mc_results_mar11_summary.csv
+    (psi1 -> ~0.98, psi2 -> ~0.01).
     """
-    X_t   = X[1:]
-    X_tm1 = X[:-1]
+    X_t   = X[:-1]
+    X_tp1 = X[1:]
     phase = (u_grid[:, None, None] * X_t[None, None, :]
-             + v_grid[None, :, None] * X_tm1[None, None, :])
+             + v_grid[None, :, None] * X_tp1[None, None, :])
     return np.mean(np.exp(1j * phase), axis=2)
 
 
