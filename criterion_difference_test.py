@@ -18,6 +18,9 @@ Usage:
 
 import numpy as np
 from scipy import stats, optimize
+from cf_weights import (KAPPA_DEFAULT, quadrature_weights, weighted_sse, check_grid,
+                        ALPHA_BOUNDS, alpha_admissible, is_alpha_one,
+                        logcf_alpha1_component)
 from joblib import Parallel, delayed
 from typing import List, Optional, Tuple, Dict
 import time
@@ -49,6 +52,11 @@ def _tcf_matrix(params_raw, u_grid, v_grid, J, alpha_fixed, beta_val):
     """Theoretical joint CF on (u,v) grid.
 
     params_raw: (rho_1,...,rho_J, varsigma_1,...,varsigma_J, [alpha])
+
+    Selection de branche : le test etait `if alpha != 1`, une EGALITE
+    FLOTTANTE, si bien qu'a alpha = 1 + 1e-9 on retombait dans la branche
+    generale ou tan(pi*alpha/2) explose.  On passe par is_alpha_one
+    (tolerance), et ALPHA_BOUNDS ecarte le voisinage de 1 en estimation.
     """
     rhos = params_raw[:J]
     varsigmas = params_raw[J:2*J]
@@ -57,7 +65,7 @@ def _tcf_matrix(params_raw, u_grid, v_grid, J, alpha_fixed, beta_val):
     pis = varsigmas / sigma if sigma > 0 else varsigmas * 0
     U, V = np.meshgrid(u_grid, v_grid, indexing='ij')
     exponent = np.zeros_like(U, dtype=complex)
-    if alpha != 1:
+    if not is_alpha_one(alpha):
         tan_t = np.tan(np.pi * alpha / 2)
         for j in range(J):
             a1 = rhos[j] * U + V          # rho_j*u + v
@@ -66,18 +74,24 @@ def _tcf_matrix(params_raw, u_grid, v_grid, J, alpha_fixed, beta_val):
                 / (1 - np.abs(rhos[j])**alpha)
                 + np.abs(U)**alpha * (1 - 1j * beta_val * np.sign(U) * tan_t))
     else:
+        # BRANCHE alpha = 1 : HORS du domaine de l'Assumption C2, donc de la
+        # Proposition 2.1.  Inatteignable quand alpha est estime ; conservee
+        # pour alpha impose (Panel A de la Table S.1, agregat de Cauchy).
         for j in range(J):
-            a1 = rhos[j] * U + V          # rho_j*u + v
-            exponent += -pis[j] * sigma * (
-                np.abs(a1) * (1 + 1j * beta_val * np.sign(a1) * 2 / np.pi
-                              * np.log(np.abs(a1) + 1e-10)) / (1 - np.abs(rhos[j]))
-                + np.abs(U) * (1 + 1j * beta_val * np.sign(U) * 2 / np.pi
-                               * np.log(np.abs(U) + 1e-10)))
+            exponent += logcf_alpha1_component(rhos[j] * U + V, U,
+                                               varsigmas[j], rhos[j], beta_val)
     return np.exp(exponent)
 
 
-def _obj_free(params, ecf, u_grid, v_grid, J, alpha_fixed, beta_val):
-    """MDE objective — free (unrestricted) model."""
+def _obj_free(params, ecf, u_grid, v_grid, J, alpha_fixed, beta_val, W):
+    """MDE objective — free (unrestricted) model.
+
+    PATCH (Assumption C2, main_v23.tex) : approximation de Riemann de
+    l'integrale (2.14) contre w(u,v) = (kappa/pi) exp(-kappa(u^2+v^2)).
+    L'ancienne version renvoyait `np.mean(|ecf - tcf|^2)`, dont l'echelle est
+    arbitraire — ce qui invalidait la comparaison de Delta_n a un quantile
+    chi2 fixe.  W is None retablit l'ancien comportement.
+    """
     for j in range(J):
         if params[j] <= 0 or params[j] >= 1:
             return 1e10
@@ -85,13 +99,15 @@ def _obj_free(params, ecf, u_grid, v_grid, J, alpha_fixed, beta_val):
         if params[j] <= 0:
             return 1e10
     a = params[2 * J] if alpha_fixed is None else alpha_fixed
-    if a <= 0 or a > 2:
+    if not alpha_admissible(a, estimated=alpha_fixed is None):
         return 1e10
     tcf = _tcf_matrix(params, u_grid, v_grid, J, alpha_fixed, beta_val)
-    return float(np.mean(np.abs(ecf - tcf) ** 2))
+    if W is None:
+        return float(np.mean(np.abs(ecf - tcf) ** 2))
+    return weighted_sse(ecf, tcf, W)
 
 
-def _obj_restr(params_r, ecf, u_grid, v_grid, J, alpha_fixed, beta_val):
+def _obj_restr(params_r, ecf, u_grid, v_grid, J, alpha_fixed, beta_val, W):
     """MDE objective — restricted model with pi_1 = 0.5 (varsigma_1 = varsigma_2 = sigma/2).
 
     params_r: (rho_1, rho_2, sigma, [alpha])  — dimension = J + 1 [+ 1]
@@ -106,34 +122,36 @@ def _obj_restr(params_r, ecf, u_grid, v_grid, J, alpha_fixed, beta_val):
     for j in range(J):
         if rhos[j] <= 0 or rhos[j] >= 1:
             return 1e10
-    if alpha <= 0 or alpha > 2:
+    if not alpha_admissible(alpha, estimated=alpha_fixed is None):
         return 1e10
     # Reconstruct full param vector with varsigma_1 = varsigma_2 = sigma/2
     varsigmas = np.full(J, sigma / J)
     full = np.concatenate([rhos, varsigmas, [alpha] if alpha_fixed is None else []])
     tcf = _tcf_matrix(full, u_grid, v_grid, J, alpha_fixed, beta_val)
-    return float(np.mean(np.abs(ecf - tcf) ** 2))
+    if W is None:
+        return float(np.mean(np.abs(ecf - tcf) ** 2))
+    return weighted_sse(ecf, tcf, W)
 
 
 def _estimate_free(Y, x0, u_grid, v_grid, J, bounds_free, alpha_fixed,
-                   beta_val, maxiter=200):
+                   beta_val, W, maxiter=200):
     """Estimate free (unrestricted) model on a given series."""
     ecf = _ecf_matrix(Y, u_grid, v_grid)
     res = optimize.minimize(
         _obj_free, x0,
-        args=(ecf, u_grid, v_grid, J, alpha_fixed, beta_val),
+        args=(ecf, u_grid, v_grid, J, alpha_fixed, beta_val, W),
         bounds=bounds_free, method='L-BFGS-B',
         options={'maxiter': maxiter, 'ftol': 1e-10})
     return res.x, res.fun
 
 
 def _estimate_restr(Y, x0_r, u_grid, v_grid, J, bounds_restr, alpha_fixed,
-                    beta_val, maxiter=200):
+                    beta_val, W, maxiter=200):
     """Estimate restricted model (pi_1 = 0.5) on a given series."""
     ecf = _ecf_matrix(Y, u_grid, v_grid)
     res = optimize.minimize(
         _obj_restr, x0_r,
-        args=(ecf, u_grid, v_grid, J, alpha_fixed, beta_val),
+        args=(ecf, u_grid, v_grid, J, alpha_fixed, beta_val, W),
         bounds=bounds_restr, method='L-BFGS-B',
         options={'maxiter': maxiter, 'ftol': 1e-10})
     return res.x, res.fun
@@ -154,12 +172,73 @@ def _free_to_restr_x0(theta_free, J, alpha_fixed):
     return np.array(out)
 
 
+def _restr_to_free_x0(theta_restr, J, alpha_fixed):
+    """Plonge une solution restreinte dans l'espace libre.
+
+    restr: (rho_1,...,rho_J, sigma, [alpha])
+    free : (rho_1,...,rho_J, sigma/J,...,sigma/J, [alpha])
+
+    Le modele restreint (pi_j = 1/J) est un SOUS-MODELE du modele libre : tout
+    point restreint est admissible dans l'espace libre.  C'est ce qui garantit
+    Q_free <= Q_restr, donc Delta_n >= 0.
+    """
+    rhos = list(theta_restr[:J])
+    sigma = float(theta_restr[J])
+    out = rhos + [sigma / J] * J
+    if alpha_fixed is None:
+        out.append(theta_restr[J + 1])
+    return np.array(out)
+
+
+def _delta_nested(Y, ecf, x0_free, u_grid, v_grid, J, bounds_free,
+                  bounds_restr, alpha_fixed, beta_val, W, scale, maxiter):
+    """Statistique de difference de critere, avec emboitement garanti.
+
+    Renvoie (theta_free, Q_free, theta_restr, Q_restr, delta).
+
+    PATCH.  La version initiale evaluait Q_free au point renvoye par
+    stablemixture.estimate() — qui minimise un AUTRE critere — puis calculait
+    Q_restr par optimisation effective, d'ou des Delta_n NEGATIFS (medianes
+    -0.001 et -0.002 aux tables S.2.4 pour n=50k et n=100k), impossibles pour
+    une restriction emboitee.
+
+    Repondere le critere ne suffit pas : meme reoptimise, le modele libre reste
+    parfois piege dans un minimum local situe AU-DESSUS de l'optimum contraint
+    (le critere MDE est non convexe et la direction pi_1 est quasi plate).
+    On impose donc l'emboitement numeriquement : le modele libre est reoptimise
+    une seconde fois en partant de la solution restreinte plongee dans l'espace
+    libre, et l'on retient le meilleur des deux optima.  Le point restreint
+    etant admissible dans l'espace libre, Q_free <= Q_restr devient vrai par
+    construction, a la tolerance de l'optimiseur pres.
+    """
+    # 1er optimum libre (depart : warm start externe)
+    th_f, Q_f = _estimate_free(Y, x0_free, u_grid, v_grid, J, bounds_free,
+                               alpha_fixed, beta_val, W, maxiter=maxiter)
+    # optimum contraint, chauffe depuis l'optimum libre
+    th_r, Q_r = _estimate_restr(Y, _free_to_restr_x0(th_f, J, alpha_fixed),
+                                u_grid, v_grid, J, bounds_restr,
+                                alpha_fixed, beta_val, W, maxiter=maxiter)
+
+    # 2e optimum libre : depart = solution restreinte plongee dans l'espace libre
+    x0_emb = _restr_to_free_x0(th_r, J, alpha_fixed)
+    Q_emb = _obj_free(x0_emb, ecf, u_grid, v_grid, J, alpha_fixed, beta_val, W)
+    th_f2, Q_f2 = _estimate_free(Y, x0_emb, u_grid, v_grid, J, bounds_free,
+                                 alpha_fixed, beta_val, W, maxiter=maxiter)
+
+    for th_c, Q_c in ((x0_emb, Q_emb), (th_f2, Q_f2)):
+        if Q_c < Q_f:
+            th_f, Q_f = np.asarray(th_c, dtype=float), Q_c
+
+    return th_f, Q_f, th_r, Q_r, scale * (Q_r - Q_f)
+
+
 # =========================================================================
 # Single-replication worker (for MC study)
 # =========================================================================
 
 def _one_rep_criterion(seed, n, b, tp_full, J, av, bv, fa, fb,
-                       ug, vg, bounds_free, bounds_restr):
+                       ug, vg, bounds_free, bounds_restr,
+                       kappa=KAPPA_DEFAULT):
     """Single MC replication: compute Delta_n and subsample reference distribution.
 
     Returns dict with:
@@ -175,6 +254,7 @@ def _one_rep_criterion(seed, n, b, tp_full, J, av, bv, fa, fb,
     from stablemixture import StableMixtureDeconvolution
 
     af = av if fa else None
+    W = quadrature_weights(ug, vg, kappa)
 
     mdl = StableMixtureDeconvolution(
         num_components=J, alpha_value=av, beta_value=bv,
@@ -182,15 +262,21 @@ def _one_rep_criterion(seed, n, b, tp_full, J, av, bv, fa, fb,
     Y, _ = mdl.generate(T=n, params=tp_full, seed=seed)
 
     # --- Full-sample estimation ---
-    theta_free_raw = np.array(mdl.estimate(Y, use_optimal_weights=False))
+    # PATCH : le modele LIBRE est desormais reoptimise sur le critere
+    # _obj_free lui-meme, comme le modele restreint, au lieu d'etre repris tel
+    # quel de mdl.estimate() (qui minimise un AUTRE critere : poids uniformes
+    # de stablemixture.objective_function, maxiter=100, depart fixe).
+    # Cette asymetrie produisait Q_restr < Q_free, donc des Delta_n NEGATIFS
+    # (medianes -0.001 et -0.002 aux Tables S.2.4 pour n=50k et n=100k), ce
+    # qui est impossible pour une restriction emboitee correctement optimisee.
+    # mdl.estimate() ne sert plus que de point de depart (warm start).
+    x0_free = np.array(mdl.estimate(Y, use_optimal_weights=False))
     ecf_full = _ecf_matrix(Y, ug, vg)
-    Q_free = _obj_free(theta_free_raw, ecf_full, ug, vg, J, af, bv)
+    (theta_free_raw, Q_free,
+     theta_restr_raw, Q_restr, delta_n) = _delta_nested(
+        Y, ecf_full, x0_free, ug, vg, J, bounds_free, bounds_restr,
+        af, bv, W, scale=n, maxiter=300)
 
-    x0_r = _free_to_restr_x0(theta_free_raw, J, af)
-    theta_restr_raw, Q_restr = _estimate_restr(
-        Y, x0_r, ug, vg, J, bounds_restr, af, bv, maxiter=300)
-
-    delta_n = n * (Q_restr - Q_free)
     pval_chi2 = 1.0 - stats.chi2.cdf(max(delta_n, 0), df=1)
 
     # --- Subsample criterion differences (non-overlapping blocks) ---
@@ -202,22 +288,13 @@ def _one_rep_criterion(seed, n, b, tp_full, J, av, bv, fa, fb,
         Y_sub = Y[i * b:(i + 1) * b]
         try:
             ecf_sub = _ecf_matrix(Y_sub, ug, vg)
-            # Free on subsample
-            res_f = optimize.minimize(
-                _obj_free, theta_free_raw,
-                args=(ecf_sub, ug, vg, J, af, bv),
-                bounds=bounds_free, method='L-BFGS-B',
-                options={'maxiter': mxi, 'ftol': 1e-10})
-            Qf_sub = res_f.fun
-            # Restricted on subsample
-            x0_r_sub = _free_to_restr_x0(res_f.x, J, af)
-            res_r = optimize.minimize(
-                _obj_restr, x0_r_sub,
-                args=(ecf_sub, ug, vg, J, af, bv),
-                bounds=bounds_restr, method='L-BFGS-B',
-                options={'maxiter': mxi, 'ftol': 1e-10})
-            Qr_sub = res_r.fun
-            delta_b_list.append(b * (Qr_sub - Qf_sub))
+            # Meme construction emboitee que sur l'echantillon complet, sans
+            # quoi la distribution de reference de subsampling herite du meme
+            # biais d'optimisation que la statistique qu'elle doit calibrer.
+            *_, d_sub = _delta_nested(
+                Y_sub, ecf_sub, theta_free_raw, ug, vg, J, bounds_free,
+                bounds_restr, af, bv, W, scale=b, maxiter=mxi)
+            delta_b_list.append(d_sub)
         except Exception:
             pass
 
@@ -231,6 +308,12 @@ def _one_rep_criterion(seed, n, b, tp_full, J, av, bv, fa, fb,
 
     return {
         'delta_n': delta_n,
+        # Diagnostic : doit valoir False pour toutes les replications.  Un
+        # Delta_n < 0 signale que l'optimum libre n'est pas atteint, donc que
+        # le test n'est pas interpretable pour cette replication.
+        'delta_n_negative': bool(delta_n < 0),
+        'frac_delta_b_negative': (float(np.mean(delta_b < 0))
+                                  if len(delta_b) else np.nan),
         'delta_b': delta_b,
         'pval_chi2': pval_chi2,
         'pval_sub': pval_sub,
@@ -258,6 +341,7 @@ def run_mc_criterion_test(
     fix_alpha: bool = False,
     fix_beta: bool = True,
     J: int = 2,
+    kappa: float = KAPPA_DEFAULT,
 ) -> Dict:
     """Run Monte Carlo study of the criterion difference test for H0: pi_1 = 0.5.
 
@@ -283,17 +367,20 @@ def run_mc_criterion_test(
     ug = np.linspace(-1.5, 1.5, 15)
     vg = np.linspace(-1.5, 1.5, 15)
 
+    print("Critere MDE (Assumption C2, main_v23.tex):")
+    check_grid(ug, vg, kappa)
+
     # Bounds — free model
     bounds_free = [(0.01, 0.99)] * J + [(0.005, 5.0)] * J
     if not fix_alpha:
-        bounds_free.append((0.1, 1.99))
+        bounds_free.append(ALPHA_BOUNDS)   # (1, 2) strict, Assumption C2
     if not fix_beta:
         bounds_free.append((-0.99, 0.99))
 
     # Bounds — restricted model: (rho_1,...,rho_J, sigma, [alpha])
     bounds_restr = [(0.01, 0.99)] * J + [(0.01, 10.0)]
     if not fix_alpha:
-        bounds_restr.append((0.1, 1.99))
+        bounds_restr.append(ALPHA_BOUNDS)   # (1, 2) strict, Assumption C2
     if not fix_beta:
         bounds_restr.append((-0.99, 0.99))
 
@@ -306,6 +393,8 @@ def run_mc_criterion_test(
     lines = []
     lines.append("CRITERION DIFFERENCE TEST: H0: pi_1 = 0.5")
     lines.append(f"True pi_1 = {pi1_true:.4f}")
+    lines.append(f"Weight: w(u,v) = (kappa/pi) exp(-kappa(u^2+v^2)), "
+                 f"kappa={kappa}  [Assumption C2, main_v23.tex]")
     lines.append("=" * 80)
 
     for n in sample_sizes:
@@ -318,7 +407,8 @@ def run_mc_criterion_test(
         reps = Parallel(n_jobs=n_cores, backend='loky', verbose=5)(
             delayed(_one_rep_criterion)(
                 seed + m, n, b, true_params, J, alpha, beta,
-                fix_alpha, fix_beta, ug, vg, bounds_free, bounds_restr)
+                fix_alpha, fix_beta, ug, vg, bounds_free, bounds_restr,
+                kappa)
             for m in range(M))
         elapsed = time.time() - t0
         print(f"  Done in {elapsed:.0f}s")
@@ -334,6 +424,12 @@ def run_mc_criterion_test(
         rej_sub_05 = float(np.mean(pvals_sub < 0.05)) if len(pvals_sub) > 0 else np.nan
         rej_sub_10 = float(np.mean(pvals_sub < 0.10)) if len(pvals_sub) > 0 else np.nan
 
+        # Diagnostic d'optimisation : Delta_n >= 0 par construction.
+        frac_neg_n = float(np.mean([r['delta_n_negative'] for r in reps]))
+        fb_neg = [r['frac_delta_b_negative'] for r in reps
+                  if not np.isnan(r['frac_delta_b_negative'])]
+        frac_neg_b = float(np.mean(fb_neg)) if fb_neg else np.nan
+
         agg = {
             'n': n, 'b': b, 'M': M,
             'delta_mean': float(np.mean(deltas)),
@@ -344,6 +440,9 @@ def run_mc_criterion_test(
             'rej_chi2_10': rej_chi2_10,
             'rej_sub_05': rej_sub_05,
             'rej_sub_10': rej_sub_10,
+            'frac_delta_n_negative': frac_neg_n,
+            'frac_delta_b_negative': frac_neg_b,
+            'kappa': kappa,
         }
         results[n] = agg
 
@@ -352,10 +451,13 @@ def run_mc_criterion_test(
             f"median={agg['delta_median']:.4f}, std={agg['delta_std']:.4f}\n"
             f"  chi2(1) p-val mean={agg['pval_chi2_mean']:.4f}, "
             f"rej@5%={rej_chi2_05:.3f}, rej@10%={rej_chi2_10:.3f}\n"
-            f"  subsampling rej@5%={rej_sub_05:.3f}, rej@10%={rej_sub_10:.3f}"
+            f"  subsampling rej@5%={rej_sub_05:.3f}, rej@10%={rej_sub_10:.3f}\n"
+            f"  [diag] frac(Delta_n < 0)={frac_neg_n:.3f}, "
+            f"mean frac(Delta_b < 0)={frac_neg_b:.3f}  "
+            f"(doivent etre ~0 ; sinon l'optimum libre n'est pas atteint)"
         )
         print(summary)
-        lines.append(f"\nn={n}  (b={b}, M={M})")
+        lines.append(f"\nn={n}  (b={b}, M={M}, kappa={kappa})")
         lines.append("-" * 80)
         lines.append(summary)
 
@@ -380,6 +482,7 @@ def test_single_series(
     fix_beta: bool = True,
     J: int = 2,
     initial_guess: Optional[List[float]] = None,
+    kappa: float = KAPPA_DEFAULT,
 ) -> Dict:
     """Apply the criterion difference test to a single observed series.
 
@@ -402,16 +505,17 @@ def test_single_series(
 
     ug = np.linspace(-1.5, 1.5, 15)
     vg = np.linspace(-1.5, 1.5, 15)
+    W = quadrature_weights(ug, vg, kappa)
 
     bounds_free = [(0.01, 0.99)] * J + [(0.005, 5.0)] * J
     if not fix_alpha:
-        bounds_free.append((0.1, 1.99))
+        bounds_free.append(ALPHA_BOUNDS)   # (1, 2) strict, Assumption C2
     if not fix_beta:
         bounds_free.append((-0.99, 0.99))
 
     bounds_restr = [(0.01, 0.99)] * J + [(0.01, 10.0)]
     if not fix_alpha:
-        bounds_restr.append((0.1, 1.99))
+        bounds_restr.append(ALPHA_BOUNDS)   # (1, 2) strict, Assumption C2
     if not fix_beta:
         bounds_restr.append((-0.99, 0.99))
 
@@ -419,17 +523,19 @@ def test_single_series(
     mdl = StableMixtureDeconvolution(
         num_components=J, alpha_value=alpha, beta_value=beta,
         fix_alpha=fix_alpha, fix_beta=fix_beta, verbose=False)
-    theta_free = np.array(mdl.estimate(Y, initial_guess=initial_guess,
-                                       use_optimal_weights=False))
+    # PATCH : mdl.estimate() ne fournit qu'un warm start ; le modele libre est
+    # reoptimise sur _obj_free, comme le modele restreint (cf. commentaire dans
+    # _one_rep_criterion).
+    x0_free = np.array(mdl.estimate(Y, initial_guess=initial_guess,
+                                    use_optimal_weights=False))
     ecf_full = _ecf_matrix(Y, ug, vg)
-    Q_free = _obj_free(theta_free, ecf_full, ug, vg, J, af, beta)
 
-    # --- Restricted model ---
-    x0_r = _free_to_restr_x0(theta_free, J, af)
-    theta_restr, Q_restr = _estimate_restr(
-        Y, x0_r, ug, vg, J, bounds_restr, af, beta, maxiter=300)
+    # --- Free and restricted models, avec emboitement garanti ---
+    (theta_free, Q_free,
+     theta_restr, Q_restr, delta_n) = _delta_nested(
+        Y, ecf_full, x0_free, ug, vg, J, bounds_free, bounds_restr,
+        af, beta, W, scale=n, maxiter=300)
 
-    delta_n = n * (Q_restr - Q_free)
     pval_chi2 = 1.0 - stats.chi2.cdf(max(delta_n, 0), df=1)
 
     # --- Subsampling reference distribution ---
@@ -440,18 +546,10 @@ def test_single_series(
         Y_sub = Y[i * b:(i + 1) * b]
         try:
             ecf_sub = _ecf_matrix(Y_sub, ug, vg)
-            res_f = optimize.minimize(
-                _obj_free, theta_free,
-                args=(ecf_sub, ug, vg, J, af, beta),
-                bounds=bounds_free, method='L-BFGS-B',
-                options={'maxiter': mxi, 'ftol': 1e-10})
-            x0_r_sub = _free_to_restr_x0(res_f.x, J, af)
-            res_r = optimize.minimize(
-                _obj_restr, x0_r_sub,
-                args=(ecf_sub, ug, vg, J, af, beta),
-                bounds=bounds_restr, method='L-BFGS-B',
-                options={'maxiter': mxi, 'ftol': 1e-10})
-            delta_b_list.append(b * (res_r.fun - res_f.fun))
+            *_, d_sub = _delta_nested(
+                Y_sub, ecf_sub, theta_free, ug, vg, J, bounds_free,
+                bounds_restr, af, beta, W, scale=b, maxiter=mxi)
+            delta_b_list.append(d_sub)
         except Exception:
             pass
     delta_b = np.array(delta_b_list)
@@ -472,19 +570,21 @@ def test_single_series(
             for jj in range(J):
                 if rhos_p[jj] <= 0 or rhos_p[jj] >= 1:
                     return 1e10
-            if a_p <= 0 or a_p > 2:
+            if not alpha_admissible(a_p, estimated=af is None):
                 return 1e10
             vs = np.array([_pi1 * sigma_p, (1 - _pi1) * sigma_p])
             full_p = np.concatenate([rhos_p, vs, [a_p] if af is None else []])
             tcf = _tcf_matrix(full_p, ug, vg, J, af, beta)
-            return float(np.mean(np.abs(_ecf - tcf) ** 2))
+            if W is None:
+                return float(np.mean(np.abs(_ecf - tcf) ** 2))
+            return weighted_sse(_ecf, tcf, W)
 
         x0_prof = list(theta_restr[:J]) + [theta_restr[J]]
         if af is None:
             x0_prof.append(theta_restr[J + 1])
         bounds_prof = [(0.01, 0.99)] * J + [(0.01, 10.0)]
         if af is None:
-            bounds_prof.append((0.1, 1.99))
+            bounds_prof.append(ALPHA_BOUNDS)   # (1, 2) strict, Assumption C2
 
         try:
             res_prof = optimize.minimize(

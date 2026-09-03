@@ -27,6 +27,9 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from scipy import stats, optimize
+from cf_weights import (KAPPA_DEFAULT, quadrature_weights, weighted_sse, check_grid,
+                        ALPHA_BOUNDS, alpha_admissible, is_alpha_one,
+                        logcf_alpha1_component)
 from typing import Dict, List, Optional
 from joblib import Parallel, delayed
 import warnings
@@ -72,7 +75,7 @@ def _tcf_restr(params_r, u_grid, v_grid, J, alpha_fixed, beta_val):
     pi_j = 1.0 / J
     U, V = np.meshgrid(u_grid, v_grid, indexing='ij')
     exponent = np.zeros_like(U, dtype=complex)
-    if alpha != 1:
+    if not is_alpha_one(alpha):
         tan_t = np.tan(np.pi * alpha / 2)
         for j in range(J):
             a1 = rhos[j] * U + V          # rho_j*u + v
@@ -81,18 +84,25 @@ def _tcf_restr(params_r, u_grid, v_grid, J, alpha_fixed, beta_val):
                 / (1 - np.abs(rhos[j])**alpha)
                 + np.abs(U)**alpha * (1 - 1j * beta_val * np.sign(U) * tan_t))
     else:
+        # BRANCHE alpha = 1 : HORS du domaine de l'Assumption C2, donc de la
+        # Proposition 2.1.  Inatteignable quand alpha est estime (ALPHA_BOUNDS
+        # borne alpha au-dessus de 1) ; conservee pour alpha IMPOSE, cas du
+        # Panel A (Cauchy) de la Table S.1 du supplement.
         for j in range(J):
-            a1 = rhos[j] * U + V          # rho_j*u + v
-            exponent += -pi_j * sigma * (
-                np.abs(a1) * (1 + 1j * beta_val * np.sign(a1) * 2 / np.pi
-                              * np.log(np.abs(a1) + 1e-10)) / (1 - np.abs(rhos[j]))
-                + np.abs(U) * (1 + 1j * beta_val * np.sign(U) * 2 / np.pi
-                               * np.log(np.abs(U) + 1e-10)))
+            exponent += logcf_alpha1_component(rhos[j] * U + V, U,
+                                               sigma / J, rhos[j], beta_val)
     return np.exp(exponent)
 
 
-def _obj_restr(params_r, ecf, u_grid, v_grid, J, alpha_fixed, beta_val):
-    """MDE objective for restricted model."""
+def _obj_restr(params_r, ecf, u_grid, v_grid, J, alpha_fixed, beta_val, W):
+    """MDE objective for restricted model.
+
+    PATCH (Assumption C2 de main_v23.tex) : le critere est desormais la somme
+    de Riemann de l'integrale (2.14) contre le poids gaussien
+    w(u,v) = (kappa/pi) exp(-kappa(u^2+v^2)), et non plus la moyenne non
+    ponderee `np.mean(|ecf - tcf|^2)`.  W est fourni par
+    cf_weights.quadrature_weights ; W is None retablit l'ancien comportement.
+    """
     rhos = params_r[:J]
     sigma = params_r[J]
     alpha = params_r[J + 1] if alpha_fixed is None else alpha_fixed
@@ -101,20 +111,22 @@ def _obj_restr(params_r, ecf, u_grid, v_grid, J, alpha_fixed, beta_val):
     for j in range(J):
         if rhos[j] <= 0 or rhos[j] >= 1:
             return 1e10
-    if alpha <= 0 or alpha > 2:
+    if not alpha_admissible(alpha, estimated=alpha_fixed is None):
         return 1e10
     tcf = _tcf_restr(params_r, u_grid, v_grid, J, alpha_fixed, beta_val)
-    return float(np.mean(np.abs(ecf - tcf) ** 2))
+    if W is None:
+        return float(np.mean(np.abs(ecf - tcf) ** 2))
+    return weighted_sse(ecf, tcf, W)
 
 
 def _estimate_sub_restr(Y_sub, x0, u_grid, v_grid, J, bounds,
-                        alpha_fixed, beta_val, maxiter=200):
+                        alpha_fixed, beta_val, W, maxiter=200):
     """MDE on subsample with restriction pi_j = 1/J."""
     try:
         ecf = _ecf_matrix(Y_sub, u_grid, v_grid)
         res = optimize.minimize(
             _obj_restr, x0,
-            args=(ecf, u_grid, v_grid, J, alpha_fixed, beta_val),
+            args=(ecf, u_grid, v_grid, J, alpha_fixed, beta_val, W),
             bounds=bounds, method='L-BFGS-B',
             options={'maxiter': maxiter, 'ftol': 1e-10})
         return res.x
@@ -157,13 +169,15 @@ def _restr_true_values(tp_full, J, fix_alpha, fix_beta):
 # =========================================================================
 
 def _one_rep_restricted(seed, n, b, tp_full, tp_restr, J, av, bv, fa, fb,
-                        ug, vg, bounds_restr, pnames, clevels, ci_step):
+                        ug, vg, bounds_restr, pnames, clevels, ci_step,
+                        kappa=KAPPA_DEFAULT):
     """Single MC replication for restricted subsampling."""
     from stablemixture import StableMixtureDeconvolution
 
     af = av if fa else None
     p = len(pnames)
     mxi = 100 if b < 80 else 60
+    W = quadrature_weights(ug, vg, kappa)
 
     # Generate data from the TRUE model (which may have pi_1 != 0.5)
     mdl = StableMixtureDeconvolution(
@@ -183,7 +197,7 @@ def _one_rep_restricted(seed, n, b, tp_full, tp_restr, J, av, bv, fa, fb,
 
     res_full = optimize.minimize(
         _obj_restr, x0_r,
-        args=(ecf_full, ug, vg, J, af, bv),
+        args=(ecf_full, ug, vg, J, af, bv, W),
         bounds=bounds_restr, method='L-BFGS-B',
         options={'maxiter': 300, 'ftol': 1e-10})
     tn = res_full.x
@@ -191,7 +205,7 @@ def _one_rep_restricted(seed, n, b, tp_full, tp_restr, J, av, bv, fa, fb,
     # --- Non-overlapping blocks ---
     nno = n // b
     no_est = np.array([_estimate_sub_restr(Y[i*b:(i+1)*b], tn, ug, vg, J,
-                                           bounds_restr, af, bv, mxi)
+                                           bounds_restr, af, bv, W, mxi)
                        for i in range(nno)])
     vld = ~np.isnan(no_est).any(axis=1)
     no_est = no_est[vld]
@@ -204,7 +218,7 @@ def _one_rep_restricted(seed, n, b, tp_full, tp_restr, J, av, bv, fa, fb,
     Nb = n - b + 1
     oi = list(range(0, Nb, max(ci_step, 1)))
     ov_est = np.array([_estimate_sub_restr(Y[i:i+b], tn, ug, vg, J,
-                                           bounds_restr, af, bv, mxi)
+                                           bounds_restr, af, bv, W, mxi)
                        for i in oi])
     vld2 = ~np.isnan(ov_est).any(axis=1)
     ov_est = ov_est[vld2]
@@ -283,8 +297,10 @@ class _EngineRestricted:
     """Core engine for restricted subsampling (pi_1 = 1/J)."""
 
     def __init__(self, J=2, true_params=(0.8, 0.3, 0.7, 0.9, 1.5, 0),
-                 alpha=1.5, beta=0.0, fix_alpha=False, fix_beta=True):
+                 alpha=1.5, beta=0.0, fix_alpha=False, fix_beta=True,
+                 kappa=KAPPA_DEFAULT):
         self.J = J
+        self.kappa = kappa
         self.alpha, self.beta = alpha, beta
         self.fix_alpha, self.fix_beta = fix_alpha, fix_beta
         self.true_params = true_params
@@ -292,7 +308,7 @@ class _EngineRestricted:
         # Restricted bounds: (rho_1,...,rho_J, sigma, [alpha], [beta])
         self.bounds = [(0.01, 0.99)] * J + [(0.01, 10.0)]
         if not fix_alpha:
-            self.bounds.append((0.1, 1.99))
+            self.bounds.append(ALPHA_BOUNDS)   # (1, 2) strict, Assumption C2
         if not fix_beta:
             self.bounds.append((-0.99, 0.99))
 
@@ -321,7 +337,7 @@ class _EngineRestricted:
                 self.J, self.alpha, self.beta,
                 self.fix_alpha, self.fix_beta,
                 self.u_grid, self.v_grid, self.bounds,
-                self.param_names, conf_levels, ci_step)
+                self.param_names, conf_levels, ci_step, self.kappa)
             for m in range(M))
         print(f"  Done in {time.time() - t0:.0f}s")
         return self._agg(reps, n, b, M, conf_levels)
@@ -482,6 +498,8 @@ def run_study_restricted(
     """
     os.makedirs(output_dir, exist_ok=True)
     eng = _EngineRestricted(**engine_kwargs)
+    print("Critere MDE (Assumption C2, main_v23.tex):")
+    check_grid(eng.u_grid, eng.v_grid, eng.kappa)
     all_df = {}
     all_agg = {}
 
@@ -498,7 +516,8 @@ def run_study_restricted(
         print(df.to_string(index=False))
 
         with open(os.path.join(output_dir, f'summary_n{n}.txt'), 'w') as f:
-            f.write(f"Restricted Subsampling (pi_1=0.5) for n={n} (b={b}, M={M})\n")
+            f.write(f"Restricted Subsampling (pi_1=0.5) for n={n} "
+                    f"(b={b}, M={M}, kappa={eng.kappa})\n")
             f.write("=" * 80 + "\n")
             f.write(df.to_string(index=False) + "\n")
         df.to_csv(os.path.join(output_dir, f'summary_n{n}.csv'), index=False)
@@ -507,6 +526,8 @@ def run_study_restricted(
     # Combined summary
     with open(os.path.join(output_dir, 'summary_all.txt'), 'w') as f:
         f.write("RESTRICTED SUBSAMPLING (pi_1 = 0.5)\n")
+        f.write(f"Weight: w(u,v) = (kappa/pi) exp(-kappa(u^2+v^2)), "
+                f"kappa={eng.kappa}  [Assumption C2]\n")
         f.write("=" * 80 + "\n\n")
         for n in sample_sizes:
             a = all_agg[n]

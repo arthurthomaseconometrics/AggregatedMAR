@@ -11,6 +11,10 @@ from numpy.typing import ArrayLike
 import time
 from tqdm.auto import tqdm
 
+from cf_weights import (ALPHA_BOUNDS, alpha_admissible, is_alpha_one, lbfgsb_options,
+                        logcf_alpha1_component)
+
+
 class StableMixtureDeconvolution:
     """
     Implementation of an alpha-stable mixture model with multiple anticipative (non-causal) components.
@@ -27,7 +31,9 @@ class StableMixtureDeconvolution:
     The model parameters include:
         - rho_j: Autoregressive coefficients (0 < rho_j < 1) for each component
         - varsigma_j: Combined scale parameters (varsigma_j = sigma * pi_j)
-        - alpha: Tail index parameter (0 < alpha <= 2)
+        - alpha: Tail index parameter.  Estime, il est contraint a (1, 2) par
+          l'Assumption C2 de main_v23.tex (voir cf_weights.ALPHA_BOUNDS) ;
+          impose via fix_alpha=True, il peut prendre toute valeur de (0, 2].
         - beta: Asymmetry parameter (-1 <= beta <= 1)
     
     Derived parameters:
@@ -128,7 +134,23 @@ class StableMixtureDeconvolution:
         
         # Generate J non-causal components
         X_components = []
-        
+
+        # AUDIT 2026-09-03 (flux de graines).  Avant : `random_state=seed + j`.
+        # Les appelants Monte Carlo passent des graines CONTIGUES (seed + m pour
+        # la replication m), si bien que la composante j = 1 de la replication m
+        # et la composante j = 0 de la replication m + 1 recevaient la MEME
+        # sequence d'innovations (verifie : sequences identiques au flottant
+        # pres).  Les M replications formaient donc une chaine dependante, et
+        # toutes les erreurs Monte Carlo rapportees (Std Est., couvertures, taux
+        # de rejet) etaient sous-estimees.  SeedSequence.spawn donne J flux
+        # independants par valeur de `seed`, sans recouvrement entre graines
+        # voisines.
+        if seed is not None:
+            streams = [np.random.default_rng(child)
+                       for child in np.random.SeedSequence(int(seed)).spawn(self.num_components)]
+        else:
+            streams = [None] * self.num_components
+
         for j in range(self.num_components):
             rho_j = params_dict[f"rho_{j+1}"]
             pi_j = pi_values[j]
@@ -137,7 +159,7 @@ class StableMixtureDeconvolution:
             X_j = np.zeros(T + burn_in)
             epsilon_j = stats.levy_stable.rvs(
                 alpha=alpha, beta=beta, loc=0, scale=1,  # Unit scale since we apply pi_j * sigma later
-                size=T + burn_in, random_state=seed + j if seed is not None else None
+                size=T + burn_in, random_state=streams[j]
             )
             
             # Build the non-causal process (in reverse time)
@@ -146,8 +168,18 @@ class StableMixtureDeconvolution:
             
             # Adjust with pi_j and sigma
             X_j = pi_j * sigma * X_j
-            
-            X_components.append(X_j[burn_in:])
+
+            # AUDIT 2026-09-03 (cote du burn-in).  Avant : `X_j[burn_in:]`.
+            # La recursion est ARRIERE, initialisee par la frontiere artificielle
+            # X_j[T+burn_in-1] = 0 : le transitoire est donc a la FIN du tableau,
+            # pas au debut.  `X_j[burn_in:]` jetait la partie propre et gardait la
+            # partie contaminee -- la derniere observation valait exactement 0
+            # dans 100% des replications (elle ne recoit meme pas son propre
+            # epsilon) et |X_t| etait visiblement attenue sur ~10-15 points.
+            # A T = 250 cela represente ~5% de l'echantillon plus un point
+            # deterministe.  On garde les T points les PLUS ELOIGNES de la
+            # frontiere, comme le fait deja table_s1_mc_accuracy.simulate_component.
+            X_components.append(X_j[:T])
         
         # Compute the mixed process
         Y = np.sum(X_components, axis=0)
@@ -190,24 +222,27 @@ class StableMixtureDeconvolution:
                 pi_j = pi_values[j]
                 
                 # Calculate the exponent for the j-th component
-                if alpha != 1:
+                if not is_alpha_one(alpha):
                     # General formula for alpha != 1
                     component_exponent = -pi_j**alpha * sigma**alpha * (
-                        np.abs(u + rho_j*v)**alpha * (1 - 1j * beta * np.sign(u + rho_j*v) * np.tan(np.pi * alpha / 2)) / (1-np.abs(rho_j)**alpha) 
+                        np.abs(u + rho_j*v)**alpha * (1 - 1j * beta * np.sign(u + rho_j*v) * np.tan(np.pi * alpha / 2)) / (1-np.abs(rho_j)**alpha)
                         + np.abs(v)**alpha * (1 - 1j * beta * np.sign(v) * np.tan(np.pi * alpha / 2))
                     )
                 else:
-                    # Special case for alpha = 1 (Cauchy with beta)
-                    component_exponent = -pi_j * sigma * (
-                        np.abs(u + rho_j*v) * (1 + 1j * beta * np.sign(u + rho_j*v) * 2/np.pi * np.log(np.abs(u + rho_j*v) + 1e-10)) / (1-np.abs(rho_j)) 
-                        + np.abs(v) * (1 + 1j * beta * np.sign(v) * 2/np.pi * np.log(np.abs(v) + 1e-10))
-                    )
-                
+                    # BRANCHE alpha = 1 : HORS du domaine de l'Assumption C2, donc
+                    # de la Proposition 2.1.  Inatteignable quand alpha est estime
+                    # (ALPHA_BOUNDS borne alpha au-dessus de 1) ; conservee pour
+                    # alpha IMPOSE, cas du Panel A (Cauchy) de la Table S.1.
+                    # Convention (u, v) transposee ici : le coefficient geometrique
+                    # est u + rho_j*v et le coefficient isole est v.
+                    component_exponent = logcf_alpha1_component(
+                        u + rho_j*v, v, pi_j * sigma, rho_j, beta)
+
                 exponent += component_exponent
-            
+
             # Return the characteristic function
-            cf = np.exp(exponent)
-            
+            cf = complex(np.exp(exponent))
+
             return cf
 
 
@@ -234,8 +269,11 @@ class StableMixtureDeconvolution:
             alpha = params_dict.get("alpha", self.alpha_value)
             beta = params_dict.get("beta", self.beta_value)
             
-            # Check alpha and beta validity
-            if alpha <= 0 or alpha > 2:
+            # Check alpha and beta validity.  Quand alpha est LIBRE le domaine
+            # est celui de l'Assumption C2, alpha dans (1, 2) ; quand il est
+            # FIXE on n'exige que la validite de la loi stable, ce qui laisse
+            # passer alpha = 1 (Panel A de la Table S.1).
+            if not alpha_admissible(alpha, estimated=not self.fix_alpha):
                 return 1e10  # Penalty for invalid parameters
             if beta < -1 or beta > 1:
                 return 1e10  # Penalty for invalid parameters
@@ -319,7 +357,10 @@ class StableMixtureDeconvolution:
             
             # Add alpha and beta only if they are not fixed
             if not self.fix_alpha:
-                initial_guess.append(self.alpha_value)
+                # alpha_value peut avoir ete choisi hors du domaine de
+                # l'Assumption C2 (par ex. 1.0 pour un DGP Cauchy) ; le point de
+                # depart doit rester dans les bornes d'estimation.
+                initial_guess.append(float(np.clip(self.alpha_value, *ALPHA_BOUNDS)))
             
             if not self.fix_beta:
                 initial_guess.append(self.beta_value)
@@ -410,9 +451,11 @@ class StableMixtureDeconvolution:
             for _ in range(self.num_components):
                 bounds.append((0.005, 5))
             
-            # Bounds for alpha (0, 2) if not fixed
+            # Bounds for alpha: (1, 2) strict, Assumption C2 of main_v23.tex.
+            # Ne s'applique que si alpha est estime ; une specification a alpha
+            # fixe (fix_alpha=True) reste libre de prendre alpha = 1.
             if not self.fix_alpha:
-                bounds.append((0.1, 1.99))
+                bounds.append(ALPHA_BOUNDS)
             
             # Bounds for beta (-1, 1) if not fixed
             if not self.fix_beta:
@@ -428,12 +471,15 @@ class StableMixtureDeconvolution:
                     print("Step 1: Estimation with uniform weights...")
                     print(f"Initial guess: {initial_guess}")
                 
+                # AUDIT 2026-09-03.  `gtol` restait a son defaut 1e-5, ABSOLU,
+                # alors que le critere vaut ~1e-6 : l'optimiseur s'arretait sur
+                # le gradient bien avant l'optimum.  Voir cf_weights.MDE_GTOL.
                 result_step1 = optimize.minimize(
                     lambda params: self.objective_function(params, Y, use_optimal_weights=False),
                     initial_guess,
                     bounds=bounds,
                     method='L-BFGS-B',
-                    options={'maxiter': 100}  # Fewer iterations for preliminary step
+                    options=lbfgsb_options(1000)
                 )
                 
                 if not result_step1.success:
@@ -890,12 +936,13 @@ class StableMixtureDeconvolution:
         # Calculate theoretical scales for each component
         component_scales = []
         for j in range(self.num_components):
-            if alpha != 1:
-                # Theoretical scale of X_j,t: varsigma_j / (1-|rho_j|^alpha)^(1/alpha)
-                theoretical_scale = varsigmas[j] / ((1 - abs(rho_values[j])**alpha)**(1/alpha))
-            else:
-                # For alpha = 1 (Cauchy case)
-                theoretical_scale = varsigmas[j] / (1 - abs(rho_values[j]))
+            # Theoretical scale of X_j,t: varsigma_j / (1-|rho_j|^alpha)^(1/alpha).
+            # Contrairement a la fonction caracteristique, cette expression est
+            # CONTINUE en alpha = 1, ou elle vaut varsigma_j / (1-|rho_j|).  Le
+            # cas special qui figurait ici etait donc redondant, et son test
+            # d'egalite flottante `alpha != 1` etait trompeur : il suggerait un
+            # changement de forme fonctionnelle qui n'existe pas.
+            theoretical_scale = varsigmas[j] / ((1 - abs(rho_values[j])**alpha)**(1/alpha))
             component_scales.append(theoretical_scale)
         
         if show_progress:
@@ -946,24 +993,18 @@ class StableMixtureDeconvolution:
                         rho_j = rho_values[j]
                         varsigma_j = varsigmas[j]
                         
-                        # Generate component center from CORRECT marginal distribution
-                        if alpha != 1:
-                            # Use TRUE alpha, not proposal_alpha
-                            marginal_scale = varsigma_j / ((1 - abs(rho_j)**alpha)**(1/alpha))
-                            x_center = stats.levy_stable.rvs(
-                                alpha=alpha, beta=beta,  # CORRECT: use alpha, not proposal_alpha
-                                scale=marginal_scale,
-                                loc=0
-                            )
-                        else:
-                            # Special case for alpha = 1
-                            marginal_scale = varsigma_j / (1 - abs(rho_j))
-                            x_center = stats.levy_stable.rvs(
-                                alpha=1.0, beta=beta,
-                                scale=marginal_scale,
-                                loc=0
-                            )
-                        
+                        # Generate component center from CORRECT marginal
+                        # distribution.  L'echelle marginale est continue en
+                        # alpha = 1 (elle y vaut varsigma_j / (1-|rho_j|)) : le
+                        # cas special qui figurait ici etait redondant.
+                        # Use TRUE alpha, not proposal_alpha
+                        marginal_scale = varsigma_j / ((1 - abs(rho_j)**alpha)**(1/alpha))
+                        x_center = stats.levy_stable.rvs(
+                            alpha=alpha, beta=beta,  # CORRECT: use alpha, not proposal_alpha
+                            scale=marginal_scale,
+                            loc=0
+                        )
+
                         # Place at the center of the window
                         X_particles[j][i, half_window] = x_center
                         

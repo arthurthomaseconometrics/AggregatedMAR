@@ -102,6 +102,61 @@ ALPHA_BOUNDS = (ALPHA_MIN, ALPHA_MAX)
 # test par tolerance protege les appels a alpha impose.
 ALPHA1_TOL = 1e-8
 
+# =============================================================================
+# Tolerances de l'optimiseur (audit 2026-09-03)
+# =============================================================================
+#
+# scipy.optimize.minimize(method='L-BFGS-B') arrete sur des criteres ABSOLUS :
+# `gtol` (defaut 1e-5) porte sur max|gradient projete|, et `ftol` (defaut
+# 2.22e-9) sur la decroissance de f rapportee a max(|f|, 1) -- donc absolue
+# des que |f| < 1.  Or le critere (2.14) normalise par l'Assumption C2 vaut
+# ~1e-6 a l'optimum et son gradient est du meme ordre : avec les defauts,
+# L-BFGS-B S'ARRETE AVANT d'avoir bouge dans les directions faiblement
+# courbees (ici pi_1).
+#
+# Verification a BRUIT NUL (phi_n remplacee par phi(.;theta_0) exacte, i.e.
+# n = infini), depart (0.8, 0.2, 0.5, 0.5, 1.5), critere kappa = 1 :
+#
+#   defauts scipy   -> (psi1,psi2,sigma,pi1,alpha) = (0.7699, 0.2358, 1.6119,
+#                       0.5090, 1.5017),  D = 1.19e-06,  |grad| = 9.7e-06 < gtol
+#   avec MDE_GTOL   -> (0.8000, 0.3000, 1.6000, 0.4375, 1.5000) = theta_0,
+#                       D = 8.9e-15
+#
+# Le decrochage est un deplacement FIXE : il ne decroit pas avec n, alors que
+# l'ecart-type d'echantillonnage decroit en n^{-1/2}.  Le biais exprime en
+# ecarts-types croit donc comme sqrt(n), ce qui reproduit exactement la derive
+# de Dev.Mean et l'effondrement de couverture attribues jusqu'ici a une
+# non-identification de pi_1.
+#
+# ATTENTION.  La normalisation kappa/pi * du * dv qui aligne le critere sur
+# l'Assumption C2 est sans effet sur l'argmin (footnote de C2) mais divise le
+# gradient par ~68 : elle fait donc mordre le gtol absolu ~68x plus tot.
+# Toute renormalisation du critere DOIT s'accompagner d'un reglage de ces
+# tolerances.
+MDE_GTOL = 1e-12
+MDE_FTOL = 1e-16
+MDE_MAXITER = 2000
+
+
+def lbfgsb_options(maxiter=MDE_MAXITER, **overrides):
+    """Options L-BFGS-B communes a tous les modules MDE (voir MDE_GTOL)."""
+    opts = {"maxiter": int(maxiter), "ftol": MDE_FTOL, "gtol": MDE_GTOL}
+    opts.update(overrides)
+    return opts
+
+
+def stable_seed(*parts, base=0):
+    """
+    Graine deterministe et reproductible entre processus.
+
+    `hash()` de Python est randomise par processus (PYTHONHASHSEED), donc
+    `seed_base + hash((key, T, r))` ne redonne PAS les memes tirages d'une
+    execution a l'autre.  zlib.crc32 sur la representation UTF-8 est stable.
+    """
+    import zlib
+    key = "|".join(repr(p) for p in parts).encode("utf-8")
+    return int((base + zlib.crc32(key)) % (2 ** 32 - 1))
+
 _CACHE = {}
 
 

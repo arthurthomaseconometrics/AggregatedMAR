@@ -33,6 +33,9 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from scipy import stats, optimize
+from cf_weights import (KAPPA_DEFAULT, quadrature_weights, weighted_sse, check_grid,
+                        ALPHA_BOUNDS, alpha_admissible, is_alpha_one,
+                        logcf_alpha1_component)
 from typing import Dict, List, Optional, Tuple
 from joblib import Parallel, delayed
 import warnings
@@ -94,7 +97,7 @@ def _tcf_matrix(params_raw, u_grid, v_grid, J, alpha_fixed, beta_val):
     pis = varsigmas / sigma if sigma > 0 else varsigmas * 0
     U, V = np.meshgrid(u_grid, v_grid, indexing='ij')
     exponent = np.zeros_like(U, dtype=complex)
-    if alpha != 1:
+    if not is_alpha_one(alpha):
         tan_t = np.tan(np.pi * alpha / 2)
         for j in range(J):
             a1 = rhos[j] * U + V          # rho_j*u + v
@@ -103,19 +106,18 @@ def _tcf_matrix(params_raw, u_grid, v_grid, J, alpha_fixed, beta_val):
                 / (1 - np.abs(rhos[j])**alpha)
                 + np.abs(U)**alpha * (1 - 1j * beta_val * np.sign(U) * tan_t))
     else:
+        # BRANCHE alpha = 1 : HORS du domaine de l'Assumption C2, donc de la
+        # Proposition 2.1.  Inatteignable quand alpha est estime (ALPHA_BOUNDS
+        # borne alpha au-dessus de 1) ; conservee pour alpha IMPOSE, cas du
+        # Panel A (Cauchy) de la Table S.1 du supplement.
         for j in range(J):
-            a1 = rhos[j] * U + V          # rho_j*u + v
-            exponent += -pis[j] * sigma * (
-                np.abs(a1) * (1 + 1j * beta_val * np.sign(a1) * 2 / np.pi
-                              * np.log(np.abs(a1) + 1e-10))
-                / (1 - np.abs(rhos[j]))
-                + np.abs(U) * (1 + 1j * beta_val * np.sign(U) * 2 / np.pi
-                               * np.log(np.abs(U) + 1e-10)))
+            exponent += logcf_alpha1_component(rhos[j] * U + V, U,
+                                               varsigmas[j], rhos[j], beta_val)
     return np.exp(exponent)
 
 
 def _obj_restricted(params_r, ecf, u_grid, v_grid, J,
-                    alpha_fixed, beta_val, pi_true):
+                    alpha_fixed, beta_val, pi_true, W):
     """MDE objective for the restricted model with pi = pi_true imposed.
 
     Parameters
@@ -151,7 +153,7 @@ def _obj_restricted(params_r, ecf, u_grid, v_grid, J,
     for j in range(J):
         if rhos[j] <= 0 or rhos[j] >= 1:
             return 1e10
-    if alpha <= 0 or alpha > 2:
+    if not alpha_admissible(alpha, estimated=alpha_fixed is None):
         return 1e10
 
     # Reconstruct full parameter vector using pi_true
@@ -159,12 +161,17 @@ def _obj_restricted(params_r, ecf, u_grid, v_grid, J,
     full = np.concatenate([rhos, varsigmas,
                            [alpha] if alpha_fixed is None else []])
     tcf = _tcf_matrix(full, u_grid, v_grid, J, alpha_fixed, beta_val)
-    return float(np.mean(np.abs(ecf - tcf) ** 2))
+    # PATCH (Assumption C2, main_v23.tex) : somme de Riemann de l'integrale
+    # (2.14) contre w(u,v) = (kappa/pi) exp(-kappa(u^2+v^2)), au lieu de la
+    # moyenne non ponderee.  W is None retablit l'ancien comportement.
+    if W is None:
+        return float(np.mean(np.abs(ecf - tcf) ** 2))
+    return weighted_sse(ecf, tcf, W)
 
 
 def _estimate_restricted_sub(Y_sub, x0_r, u_grid, v_grid, J,
                               bounds_restr, alpha_fixed, beta_val,
-                              pi_true, maxiter=200):
+                              pi_true, W, maxiter=200):
     """Estimate restricted model on a subsample with warm start.
 
     Parameters
@@ -197,7 +204,7 @@ def _estimate_restricted_sub(Y_sub, x0_r, u_grid, v_grid, J,
         ecf = _ecf_matrix(Y_sub, u_grid, v_grid)
         res = optimize.minimize(
             _obj_restricted, x0_r,
-            args=(ecf, u_grid, v_grid, J, alpha_fixed, beta_val, pi_true),
+            args=(ecf, u_grid, v_grid, J, alpha_fixed, beta_val, pi_true, W),
             bounds=bounds_restr, method='L-BFGS-B',
             options={'maxiter': maxiter, 'ftol': 1e-10})
         return res.x
@@ -294,12 +301,13 @@ def _restricted_true_values(true_params, J, fix_alpha, fix_beta):
 def _one_rep_restricted(seed, n, b, tp_full, tp_restr, pi_true, J,
                         av, bv, fa, fb,
                         ug, vg, bounds_restr, pnames_restr,
-                        clevels, ci_step):
+                        clevels, ci_step, kappa=KAPPA_DEFAULT):
     """Single MC replication for restricted subsampling."""
     from stablemixture import StableMixtureDeconvolution
     af = av if fa else None
     p = len(pnames_restr)
     mxi = 100 if b < 80 else 60
+    W = quadrature_weights(ug, vg, kappa)
 
     # --- Generate data ---
     mdl = StableMixtureDeconvolution(
@@ -315,7 +323,7 @@ def _one_rep_restricted(seed, n, b, tp_full, tp_restr, pi_true, J,
     ecf_full = _ecf_matrix(Y, ug, vg)
     res_full = optimize.minimize(
         _obj_restricted, x0_r,
-        args=(ecf_full, ug, vg, J, af, bv, pi_true),
+        args=(ecf_full, ug, vg, J, af, bv, pi_true, W),
         bounds=bounds_restr, method='L-BFGS-B',
         options={'maxiter': 300, 'ftol': 1e-10})
     tn = res_full.x  # Full-sample restricted estimate
@@ -324,7 +332,7 @@ def _one_rep_restricted(seed, n, b, tp_full, tp_restr, pi_true, J,
     nno = n // b
     no_est = np.array([
         _estimate_restricted_sub(Y[i*b:(i+1)*b], tn, ug, vg, J,
-                                 bounds_restr, af, bv, pi_true, mxi)
+                                 bounds_restr, af, bv, pi_true, W, mxi)
         for i in range(nno)])
     vld = ~np.isnan(no_est).any(axis=1)
     no_est = no_est[vld]
@@ -338,7 +346,7 @@ def _one_rep_restricted(seed, n, b, tp_full, tp_restr, pi_true, J,
     oi = list(range(0, Nb, max(ci_step, 1)))
     ov_est = np.array([
         _estimate_restricted_sub(Y[i:i+b], tn, ug, vg, J,
-                                 bounds_restr, af, bv, pi_true, mxi)
+                                 bounds_restr, af, bv, pi_true, W, mxi)
         for i in oi])
     vld2 = ~np.isnan(ov_est).any(axis=1)
     ov_est = ov_est[vld2]
@@ -423,8 +431,10 @@ class _EngineRestricted:
     """Core engine for restricted subsampling with pi = pi_true imposed."""
 
     def __init__(self, J=2, true_params=(0.8, 0.3, 0.7, 0.9, 1.5, 0),
-                 alpha=1.5, beta=0.0, fix_alpha=False, fix_beta=True):
+                 alpha=1.5, beta=0.0, fix_alpha=False, fix_beta=True,
+                 kappa=KAPPA_DEFAULT):
         self.J = J
+        self.kappa = kappa
         self.alpha, self.beta = alpha, beta
         self.fix_alpha, self.fix_beta = fix_alpha, fix_beta
         self.true_params = true_params
@@ -438,7 +448,7 @@ class _EngineRestricted:
         # Restricted-space bounds: (rho_1,...,rho_J, sigma, [alpha], [beta])
         self.bounds_restr = [(0.01, 0.99)] * J + [(0.01, 10.0)]
         if not fix_alpha:
-            self.bounds_restr.append((0.1, 1.99))
+            self.bounds_restr.append(ALPHA_BOUNDS)   # (1, 2) strict, Assumption C2
         if not fix_beta:
             self.bounds_restr.append((-0.99, 0.99))
 
@@ -471,7 +481,7 @@ class _EngineRestricted:
                 self.pi_true, self.J, self.alpha, self.beta,
                 self.fix_alpha, self.fix_beta,
                 self.u_grid, self.v_grid, self.bounds_restr,
-                self.param_names, conf_levels, ci_step)
+                self.param_names, conf_levels, ci_step, self.kappa)
             for m in range(M))
         print(f"  Done in {time.time() - t0:.0f}s")
         return self._agg(reps, n, b, M, conf_levels)
@@ -656,6 +666,9 @@ def run_study_restricted(
     os.makedirs(output_dir, exist_ok=True)
     eng = _EngineRestricted(**engine_kwargs)
 
+    print("Critere MDE (Assumption C2, main_v23.tex):")
+    check_grid(eng.u_grid, eng.v_grid, eng.kappa)
+
     # Log the constraint
     print(f"\nRestricted subsampling: pi_true = {eng.pi_true}")
     print(f"  sigma_true = {eng.sigma_true:.4f}")
@@ -682,7 +695,7 @@ def run_study_restricted(
         # Save per-n results
         with open(os.path.join(output_dir, f'summary_n{n}.txt'), 'w') as f:
             f.write(f"Restricted Subsampling Results for n={n} "
-                    f"(b={b}, M={M})\n")
+                    f"(b={b}, M={M}, kappa={eng.kappa})\n")
             f.write(f"Constraint: pi_1 = {eng.pi_true[0]:.6f}\n")
             f.write("=" * 80 + "\n")
             f.write(df.to_string(index=False) + "\n")
@@ -693,6 +706,8 @@ def run_study_restricted(
     # Combined summary
     with open(os.path.join(output_dir, 'summary_all.txt'), 'w') as f:
         f.write("RESTRICTED SUBSAMPLING CONVERGENCE STUDY\n")
+        f.write(f"Weight: w(u,v) = (kappa/pi) exp(-kappa(u^2+v^2)), "
+                f"kappa={eng.kappa}  [Assumption C2]\n")
         f.write(f"Constraint: pi_1 = {eng.pi_true[0]:.6f}\n")
         f.write("=" * 80 + "\n\n")
         for n in sample_sizes:

@@ -1,8 +1,14 @@
 """
 Subsampling with Reparameterization (sigma, pi_1) and Gaussian Weights
 
-Modified version using Gaussian weights w(u,v) = exp(-kappa*(u^2 + v^2))
-as specified in Assumption C2 of main_v15.tex.
+Weights: w(u,v) = (kappa/pi) exp(-kappa*(u^2 + v^2)), Assumption C2 of
+main_v23.tex.  The objective is a Riemann sum of the integral (2.14); the
+quadrature is provided by cf_weights.quadrature_weights.
+
+PATCH : the full-sample estimate theta_n is now the minimiser of the SAME
+criterion as the subsample estimates (see _one_rep_reparam).  It used to come
+from stablemixture.estimate(), which minimises a uniformly weighted objective,
+so that theta_n and theta_b were two different statistics.
 
 The MDE estimation remains in the original (rho_j, varsigma_j, alpha) space.
 After each subsample estimation, results are mapped to the transformed space:
@@ -34,6 +40,10 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from scipy import stats, optimize
+from cf_weights import (KAPPA_DEFAULT, quadrature_weights, weighted_sse, check_grid,
+                        ALPHA_BOUNDS, alpha_admissible, is_alpha_one,
+                        logcf_alpha1_component, lbfgsb_options,
+                        MDE_GTOL, MDE_FTOL, MDE_MAXITER)
 from typing import Dict, List, Optional, Tuple
 from joblib import Parallel, delayed
 import warnings
@@ -41,6 +51,9 @@ import os
 import time
 
 warnings.filterwarnings('ignore')
+
+# Nombre vise de blocs chevauchants par replication (voir _EngineReparam.mc).
+OV_BLOCKS_TARGET = 2000
 
 
 # =============================================================================
@@ -69,6 +82,12 @@ def vectorized_tcf(params, u_grid, v_grid, J, alpha_fixed, beta_val):
     The decomposition u*X_{j,t} + v*X_{j,t+1}
                     = (rho_j*u + v)*X_{j,t+1} + u*eps_{j,t}
     yields the two independent terms |rho_j*u + v|^alpha and |u|^alpha.
+
+    Selection de branche : le test etait `if alpha != 1`, une EGALITE
+    FLOTTANTE.  A alpha = 1 + 1e-9 on tombait donc dans la branche generale
+    ou tan(pi*alpha/2) ~ -6.4e8, ce qui detruit silencieusement le critere.
+    Le test passe par cf_weights.is_alpha_one (tolerance ALPHA1_TOL), et
+    ALPHA_BOUNDS place desormais le domaine d'estimation au-dessus de 1.
     """
     rhos, varsigmas = params[:J], params[J:2*J]
     alpha = params[2*J] if alpha_fixed is None else alpha_fixed
@@ -76,7 +95,7 @@ def vectorized_tcf(params, u_grid, v_grid, J, alpha_fixed, beta_val):
     pis = varsigmas / sigma
     U, V = np.meshgrid(u_grid, v_grid, indexing='ij')
     exponent = np.zeros_like(U, dtype=complex)
-    if alpha != 1:
+    if not is_alpha_one(alpha):
         tan_t = np.tan(np.pi * alpha / 2)
         for j in range(J):
             a1 = rhos[j] * U + V          # rho_j*u + v
@@ -85,41 +104,44 @@ def vectorized_tcf(params, u_grid, v_grid, J, alpha_fixed, beta_val):
                 / (1 - np.abs(rhos[j])**alpha)
                 + np.abs(U)**alpha * (1 - 1j * beta_val * np.sign(U) * tan_t))
     else:
+        # BRANCHE alpha = 1 : HORS du domaine de l'Assumption C2 et donc de
+        # la Proposition 2.1.  Inatteignable quand alpha est estime (borne
+        # basse ALPHA_BOUNDS[0] > 1) ; conservee pour alpha IMPOSE, cas du
+        # Panel A (Cauchy) de la Table S.1 du supplement.
         for j in range(J):
-            a1 = rhos[j] * U + V          # rho_j*u + v
-            exponent += -pis[j] * sigma * (
-                np.abs(a1) * (1 + 1j * beta_val * np.sign(a1) * 2 / np.pi
-                              * np.log(np.abs(a1) + 1e-10))
-                / (1 - np.abs(rhos[j]))
-                + np.abs(U) * (1 + 1j * beta_val * np.sign(U) * 2 / np.pi
-                               * np.log(np.abs(U) + 1e-10)))
+            exponent += logcf_alpha1_component(rhos[j] * U + V, U,
+                                               varsigmas[j], rhos[j], beta_val)
     return np.exp(exponent)
 
 
-def gaussian_weights(u_grid, v_grid, kappa=1.0):
+def gaussian_weights(u_grid, v_grid, kappa=KAPPA_DEFAULT):
     """
-    Compute Gaussian weights as per Assumption C2.
-    
-    w(u, v) = exp(-kappa * (u^2 + v^2))
-    
+    Poids de quadrature de l'Assumption C2 (main_v23.tex).
+
+    PATCH : delegue a cf_weights.quadrature_weights, qui renvoie
+        W[i,j] = (kappa/pi) exp(-kappa (u_i^2 + v_j^2)) * du * dv,
+    c'est-a-dire une somme de Riemann de l'integrale (2.14) et non plus
+    exp(-kappa(u^2+v^2)) brut.  La normalisation (kappa/pi et du*dv) ne change
+    pas l'argmin — donc pas les estimations — mais elle rend le critere
+    comparable entre modules et interpretable en niveau.
+
     Args:
-        u_grid: Grid of u values
-        v_grid: Grid of v values
-        kappa: Decay parameter (must be > 0)
-        
+        u_grid, v_grid: grilles d'evaluation
+        kappa: parametre de decroissance (> 0) ; None = poids uniformes
+
     Returns:
-        2D array of weights
+        matrice 2D de poids de quadrature
     """
-    U, V = np.meshgrid(u_grid, v_grid, indexing='ij')
-    return np.exp(-kappa * (U**2 + V**2))
+    return quadrature_weights(u_grid, v_grid, kappa)
 
 
-def fast_objective(params, ecf, u_grid, v_grid, J, alpha_fixed, beta_val, kappa=1.0):
+def fast_objective(params, ecf, u_grid, v_grid, J, alpha_fixed, beta_val,
+                   kappa=KAPPA_DEFAULT):
     """
-    MDE objective with Gaussian weights.
-    
-    D(theta) = sum_{u,v} w(u,v) * |varphi_n(u,v) - varphi(u,v;theta)|^2
-    where w(u,v) = exp(-kappa*(u^2 + v^2))
+    Critere MDE pondere (Assumption C2, main_v23.tex).
+
+    D(theta) ~= sum_{u,v} w(u,v) |varphi_n(u,v) - varphi(u,v;theta)|^2 du dv
+    avec w(u,v) = (kappa/pi) exp(-kappa (u^2 + v^2)).
     """
     for j in range(J):
         if params[j] <= 0 or params[j] >= 1:
@@ -128,9 +150,11 @@ def fast_objective(params, ecf, u_grid, v_grid, J, alpha_fixed, beta_val, kappa=
         if params[j] <= 0:
             return 1e10
     a = params[2*J] if alpha_fixed is None else alpha_fixed
-    if a <= 0 or a > 2:
+    # Domaine de l'Assumption C2 quand alpha est libre ; simple validite de la
+    # loi stable quand il est impose (cf. cf_weights.alpha_admissible).
+    if not alpha_admissible(a, estimated=alpha_fixed is None):
         return 1e10
-    
+
     tcf = vectorized_tcf(params, u_grid, v_grid, J, alpha_fixed, beta_val)
     diff = np.abs(ecf - tcf)**2
     
@@ -140,19 +164,113 @@ def fast_objective(params, ecf, u_grid, v_grid, J, alpha_fixed, beta_val, kappa=
     return float(np.sum(weights * diff))
 
 
-def estimate_sub(Y_sub, x0, u_grid, v_grid, J, bounds,
-                 alpha_fixed, beta_val, kappa, maxiter=200):
-    """Fast MDE on subsample with warm start and Gaussian weights."""
+# =============================================================================
+# UN SEUL estimateur, pour l'echantillon complet comme pour les blocs
+# =============================================================================
+#
+# AUDIT 2026-09-03 (validite Politis-Romano).  PR exige que theta_b soit LA MEME
+# fonctionnelle appliquee au sous-echantillon que theta_n a l'echantillon
+# complet.  Ce n'etait pas le cas :
+#   - theta_n partait de stablemixture.estimate(...), maxiter = 300 ;
+#   - chaque bloc partait de theta_n lui-meme (warm start), maxiter 60 ou 100.
+# Un depart dependant des donnees fait de theta_b une fonction de l'echantillon
+# ENTIER : ce n'est plus la statistique dont PR approxime la loi.  Effet mesure
+# a n = 10 000 : l'ecart-type des deviations de bloc en pi_1 etait degonfle de
+# 13% (3.49 en warm start contre 3.93 en cold start), soit une sous-couverture
+# unidirectionnelle sur la seule direction faiblement courbee ; les autres
+# coordonnees etaient intactes (ratios 0.98-1.04).
+#
+# Les departs sont desormais FIXES (independants des donnees) et forment des
+# PAIRES MIROIR sous l'echange des composantes.  L'ensemble de departs est donc
+# invariant par label switching, ce qui rend la mise en ordre canonique de
+# `canonical_order` bien definie et ne privilegie aucune etiquette.
+MDE_STARTS_J2 = (
+    (0.75, 0.25, 0.50, 0.50, 1.50),
+    (0.25, 0.75, 0.50, 0.50, 1.50),   # miroir de la precedente
+    (0.85, 0.45, 0.30, 0.90, 1.40),
+    (0.45, 0.85, 0.90, 0.30, 1.60),   # miroir de la precedente
+)
+N_STARTS_DEFAULT = 2
+
+
+def mde_starts(J, fix_alpha, fix_beta, beta_val, n_starts=N_STARTS_DEFAULT):
+    """Points de depart deterministes, en paires miroir (voir MDE_STARTS_J2)."""
+    if J != 2:
+        raise NotImplementedError("MDE_STARTS_J2 ne couvre que le cas J = 2")
+    starts = []
+    for row in MDE_STARTS_J2[:max(1, int(n_starts))]:
+        x = list(row[:4])
+        if not fix_alpha:
+            x.append(float(np.clip(row[4], *ALPHA_BOUNDS)))
+        if not fix_beta:
+            x.append(float(beta_val))
+        starts.append(np.array(x, dtype=float))
+    return starts
+
+
+def canonical_order(raw, J):
+    """
+    Restriction d'ordre de l'Assumption C1 de main_v23.tex.
+
+    AUDIT 2026-09-03.  Aucun ordre n'etait impose sur les rho : les bornes sont
+    (0.01, 0.99) pour les deux composantes.  Sans ordre, D_0 admet J! minima et
+    l'Assumption C5 tombe ; un bloc etiquete a l'envers rapporte
+    pi_1 -> 1 - pi_1 = 0.5625 au lieu de 0.4375.  Mesure a n = 1000 : 3% des
+    blocs revenaient inverses.
+
+    Convention retenue : rho DECROISSANT (composante la plus persistante en
+    premier), qui est celle du DGP (psi_1 = 0.8 > psi_2 = 0.3) et celle de
+    table_s1_mc_accuracy.sort_by_psi_desc.  Le SENS de l'ordre est indifferent
+    (C1 l'ecrit croissant) : ce qui compte est qu'un ordre soit fixe.
+    """
+    raw = np.asarray(raw, dtype=float)
+    if raw.size < 2 * J or not np.all(np.isfinite(raw[:2 * J])):
+        return raw
+    order = np.argsort(-raw[:J], kind="stable")
+    out = raw.copy()
+    out[:J] = raw[:J][order]
+    out[J:2 * J] = raw[J:2 * J][order]
+    return out
+
+
+def mde(ecf, starts, u_grid, v_grid, J, bounds, alpha_fixed, beta_val, kappa,
+        maxiter=MDE_MAXITER):
+    """
+    L'estimateur MDE : minimiseur de `fast_objective` sur le meme critere, la
+    meme grille, le meme kappa, les memes tolerances et les memes departs, que
+    l'entree soit l'echantillon complet ou un bloc.
+
+    Les tolerances viennent de cf_weights.lbfgsb_options : `gtol` par defaut de
+    scipy vaut 1e-5 en ABSOLU alors que le critere pondere vaut ~1e-6, si bien
+    que L-BFGS-B s'arretait avant d'avoir bouge dans la direction pi_1.
+    """
+    best_f, best_x = np.inf, None
+    for x0 in starts:
+        try:
+            res = optimize.minimize(
+                fast_objective, x0,
+                args=(ecf, u_grid, v_grid, J, alpha_fixed, beta_val, kappa),
+                bounds=bounds, method='L-BFGS-B',
+                options=lbfgsb_options(maxiter))
+        except Exception:
+            continue
+        if np.isfinite(res.fun) and res.fun < best_f and np.all(np.isfinite(res.x)):
+            best_f, best_x = float(res.fun), np.asarray(res.x, dtype=float)
+    if best_x is None:
+        return np.full(len(starts[0]), np.nan)
+    return canonical_order(best_x, J)
+
+
+def estimate_sub(Y_sub, starts, u_grid, v_grid, J, bounds,
+                 alpha_fixed, beta_val, kappa, maxiter=MDE_MAXITER):
+    """MDE sur un sous-echantillon -- strictement la meme fonctionnelle que
+    sur l'echantillon complet (cf. `mde`)."""
     try:
         ecf = vectorized_ecf(Y_sub, u_grid, v_grid)
-        res = optimize.minimize(
-            fast_objective, x0,
-            args=(ecf, u_grid, v_grid, J, alpha_fixed, beta_val, kappa),
-            bounds=bounds, method='L-BFGS-B',
-            options={'maxiter': maxiter, 'ftol': 1e-10})
-        return res.x
     except Exception:
-        return np.full(len(x0), np.nan)
+        return np.full(len(starts[0]), np.nan)
+    return mde(ecf, starts, u_grid, v_grid, J, bounds, alpha_fixed, beta_val,
+               kappa, maxiter)
 
 
 def _transform_params(raw, J, fix_alpha, fix_beta):
@@ -211,26 +329,46 @@ def _reparam_true(tp_full, J, fix_alpha, fix_beta):
 
 
 def _one_rep_reparam(seed, n, b, tp_full, tp_reparam, J, av, bv, fa, fb,
-                     ug, vg, bounds, pnames_reparam, clevels, ci_step, kappa):
-    """Single MC replication with post-estimation reparameterization and Gaussian weights."""
+                     ug, vg, bounds, pnames_reparam, clevels, ci_step, kappa,
+                     n_starts=N_STARTS_DEFAULT):
+    """Une replication Monte Carlo, reparametrisation post-estimation.
+
+    AUDIT 2026-09-03.  theta_n et les theta_b sont maintenant produits par UN
+    SEUL appel a `mde`, avec les memes departs fixes, les memes bornes, le meme
+    maxiter et les memes tolerances : c'est la condition "meme fonctionnelle"
+    de Politis-Romano.  Auparavant theta_n partait de stablemixture.estimate
+    (maxiter 300) et les blocs partaient de theta_n (warm start, maxiter 60-100).
+    """
     from stablemixture import StableMixtureDeconvolution
     af = av if fa else None
     p = len(pnames_reparam)
-    mxi = 100 if b < 80 else 60
+    starts = mde_starts(J, fa, fb, bv, n_starts)
 
     mdl = StableMixtureDeconvolution(
         num_components=J, alpha_value=av, beta_value=bv,
         fix_alpha=fa, fix_beta=fb, verbose=False)
     Y, _ = mdl.generate(T=n, params=tp_full, seed=seed)
 
-    # Full-sample estimate in original space, then transform
-    tn_raw = np.array(mdl.estimate(Y, use_optimal_weights=False))
+    # --- Full-sample estimate in original space, then transform ---
+    tn_raw = mde(vectorized_ecf(Y, ug, vg), starts, ug, vg, J, bounds,
+                 af, bv, kappa)
+    if not np.all(np.isfinite(tn_raw)):
+        return {'theta_n': np.full(p, np.nan), 'sd_no': np.full((0, p), np.nan),
+                'ci_res': {lv: {q: {'covers': np.nan, 'width': np.nan}
+                                for q in pnames_reparam} for lv in clevels},
+                'ci_norm_res': {lv: {q: {'covers': np.nan, 'width': np.nan}
+                                     for q in pnames_reparam} for lv in clevels},
+                'norm_res': {q: {k: np.nan for k in
+                                 ['mean', 'std', 'skewness', 'kurtosis',
+                                  'ks_rej', 'sw_rej', 'jb_rej', 'n_blocks']}
+                             for q in pnames_reparam},
+                'n_no': 0, 'n_ov': 0}
     tn = _transform_params(tn_raw, J, fa, fb)
 
     # --- Non-overlapping blocks ---
     nno = n // b
-    no_raw = np.array([estimate_sub(Y[i*b:(i+1)*b], tn_raw, ug, vg, J,
-                                    bounds, af, bv, kappa, mxi) for i in range(nno)])
+    no_raw = np.array([estimate_sub(Y[i*b:(i+1)*b], starts, ug, vg, J,
+                                    bounds, af, bv, kappa) for i in range(nno)])
     vld = ~np.isnan(no_raw).any(axis=1)
     no_raw = no_raw[vld]
     # Transform each subsample estimate
@@ -240,11 +378,10 @@ def _one_rep_reparam(seed, n, b, tp_full, tp_reparam, J, av, bv, fa, fb,
     else:
         sd_no = np.full((0, p), np.nan)
 
-    # --- Overlapping blocks (thinned) ---
-    Nb = n - b + 1
-    oi = list(range(0, Nb, max(ci_step, 1)))
-    ov_raw = np.array([estimate_sub(Y[i:i+b], tn_raw, ug, vg, J,
-                                    bounds, af, bv, kappa, mxi) for i in oi])
+    # --- Overlapping blocks (thinned by ci_step, cf. _EngineReparam.mc) ---
+    oi = list(range(0, n - b + 1, max(int(ci_step), 1)))
+    ov_raw = np.array([estimate_sub(Y[i:i+b], starts, ug, vg, J,
+                                    bounds, af, bv, kappa) for i in oi])
     vld2 = ~np.isnan(ov_raw).any(axis=1)
     ov_raw = ov_raw[vld2]
     if len(ov_raw) >= 3:
@@ -328,9 +465,11 @@ class _EngineReparam:
     """Core engine with post-estimation reparameterization and Gaussian weights."""
 
     def __init__(self, J=2, true_params=(0.8, 0.3, 0.7, 0.9, 1.5, 0),
-                 alpha=1.5, beta=0.0, fix_alpha=False, fix_beta=True, kappa=1.0):
+                 alpha=1.5, beta=0.0, fix_alpha=False, fix_beta=True, kappa=1.0,
+                 n_starts=N_STARTS_DEFAULT):
         from stablemixture import StableMixtureDeconvolution
         self.J = J
+        self.n_starts = int(n_starts)
         self.alpha, self.beta = alpha, beta
         self.fix_alpha, self.fix_beta = fix_alpha, fix_beta
         self.true_params = true_params
@@ -339,7 +478,7 @@ class _EngineReparam:
         # Original-space bounds (estimation unchanged)
         self.bounds = [(0.01, 0.99)] * J + [(0.005, 5.0)] * J
         if not fix_alpha:
-            self.bounds.append((0.1, 1.99))
+            self.bounds.append(ALPHA_BOUNDS)   # (1, 2) strict, Assumption C2
         if not fix_beta:
             self.bounds.append((-0.99, 0.99))
 
@@ -354,14 +493,24 @@ class _EngineReparam:
     def mc(self, n, M, b, seed=42, conf_levels=(0.90, 0.95),
            ci_step=None, n_cores=-1, backend='loky'):
         """Run M replications in parallel with Gaussian weights."""
+        # AUDIT 2026-09-03 (thinning).  Avant : `ci_step = 1` en dur, et le
+        # `Nb = n - b + 1` calcule juste au-dessus n'etait jamais utilise --
+        # du code mort.  La Section S.2.1 du supplement annonce pourtant des
+        # blocs chevauchants "with appropriate thinning to reduce dependence".
+        # Le pas est desormais choisi pour viser OV_BLOCKS_TARGET blocs : aux
+        # tailles n <= 1000 cela laisse ci_step = 1 (chevauchement complet, ce
+        # que recommande PR99 pour une serie stationnaire), et cela borne le
+        # cout aux grandes tailles ou n - b + 1 depasse 10^4 optimisations par
+        # replication.  La valeur effective est imprimee et enregistree.
         if ci_step is None:
-            Nb = n - b + 1
-            ci_step = 1
+            ci_step = max(1, int(np.ceil((n - b + 1) / OV_BLOCKS_TARGET)))
+        ci_step = max(int(ci_step), 1)
+        self.ci_step_used = ci_step
 
         nno = n // b
-        nov = len(range(0, n - b + 1, max(ci_step, 1)))
-        print(f"  n={n}, b={b}, M={M}, κ={self.kappa} | non-ov={nno}, "
-              f"ov(step={ci_step})={nov}, est/rep={nno + nov}")
+        nov = len(range(0, n - b + 1, ci_step))
+        print(f"  n={n}, b={b}, M={M}, κ={self.kappa}, starts={self.n_starts} | "
+              f"non-ov={nno}, ov(step={ci_step})={nov}, est/rep={nno + nov}")
 
         t0 = time.time()
         reps = Parallel(n_jobs=n_cores, backend=backend, verbose=5)(
@@ -370,7 +519,8 @@ class _EngineReparam:
                 self.J, self.alpha, self.beta,
                 self.fix_alpha, self.fix_beta,
                 self.u_grid, self.v_grid, self.bounds,
-                self.param_names, conf_levels, ci_step, self.kappa)
+                self.param_names, conf_levels, ci_step, self.kappa,
+                self.n_starts)
             for m in range(M))
         print(f"  Done in {time.time() - t0:.0f}s")
         return self._agg(reps, n, b, M, conf_levels)
@@ -379,6 +529,8 @@ class _EngineReparam:
         """Aggregate results across replications."""
         pnames = self.param_names
         a = {'n': n, 'b': b, 'M': M, 'kappa': self.kappa,
+             'ci_step': getattr(self, 'ci_step_used', None),
+             'n_starts': self.n_starts,
              'param_names': pnames, 'conf_levels': cl,
              'moments': {p: {} for p in pnames},
              'rej_rates': {p: {} for p in pnames},
@@ -437,15 +589,41 @@ class _EngineReparam:
                 for k, p in enumerate(pnames):
                     v = sd[:, k]
                     a['pooled_no'][p].extend(v[np.isfinite(v)].tolist())
+
+        # AUDIT 2026-09-03 (moments poolés).  Dev.Mean / Dev.Std / Skew / Kurt
+        # etaient des MOYENNES, sur les M replications, de statistiques
+        # calculees chacune sur N_b deviations seulement -- soit 6, 8 ou 10
+        # points a n = 250, 500, 1000.  Une asymetrie ou un kurtosis sur 6
+        # points n'a aucun contenu, et l'estimateur d'un moment d'ordre 3 ou 4
+        # y est severement biaise.  La Section S.2.1 du supplement decrit
+        # d'ailleurs deja la bonne procedure : "The pooled non-overlapping
+        # block deviations ACROSS ALL Monte Carlo replications are subjected to
+        # several normality diagnostics".  Ces quatre colonnes sont donc
+        # desormais calculees sur l'echantillon poole, ce qui aligne le code
+        # sur le texte.  Les taux de rejet SW / JB / KS restent, eux, des
+        # moyennes de rejets par replication : ce sont des TAUX, et leur
+        # faible puissance a N_b petit est une propriete a rapporter, pas un
+        # defaut a corriger.
+        a['moments_pooled'] = {}
+        for p in pnames:
+            z = np.asarray(a['pooled_no'][p], dtype=float)
+            z = z[np.isfinite(z)]
+            a['moments_pooled'][p] = {
+                'mean': float(np.mean(z)) if z.size >= 2 else np.nan,
+                'std': float(np.std(z, ddof=1)) if z.size >= 2 else np.nan,
+                'skewness': float(stats.skew(z)) if z.size >= 3 else np.nan,
+                'kurtosis': float(stats.kurtosis(z)) if z.size >= 4 else np.nan,
+                'n_pooled': int(z.size)}
         return a
 
     def table(self, agg):
         """Summary DataFrame."""
         n_val = agg['n']
         rows = []
+        mom = agg.get('moments_pooled', agg['moments'])
         for p in agg['param_names']:
             se = agg['theta_n_std'][p]
-            ds = agg['moments'][p]['std']
+            ds = mom[p]['std']
             ratio = (ds / (np.sqrt(n_val) * se)
                      if se > 0 and not np.isnan(se) and not np.isnan(ds)
                      else np.nan)
@@ -453,11 +631,11 @@ class _EngineReparam:
                    'True': agg['true_params_est'][p],
                    'Avg Est.': agg['theta_n_mean'][p],
                    'Std Est.': se,
-                   'Dev.Mean': agg['moments'][p]['mean'],
+                   'Dev.Mean': mom[p]['mean'],
                    'Dev.Std': ds,
                    'Ratio': ratio,
-                   'Skew': agg['moments'][p]['skewness'],
-                   'Kurt': agg['moments'][p]['kurtosis'],
+                   'Skew': mom[p]['skewness'],
+                   'Kurt': mom[p]['kurtosis'],
                    'SW Rej.': agg['rej_rates'][p]['sw_rej'],
                    'JB Rej.': agg['rej_rates'][p]['jb_rej']}
             for l in agg['conf_levels']:
@@ -539,12 +717,15 @@ def run_study_reparam(sample_sizes: List[int] = [250, 500, 1000, 10000],
     """
     os.makedirs(output_dir, exist_ok=True)
     eng = _EngineReparam(kappa=kappa, **engine_kwargs)
+    print("Critere MDE (Assumption C2, main_v23.tex):")
+    check_grid(eng.u_grid, eng.v_grid, eng.kappa)
     all_df = {}
     all_agg = {}
 
     print(f"\n{'='*70}")
     print(f"SUBSAMPLING WITH REPARAMETERIZATION AND GAUSSIAN WEIGHTS")
-    print(f"  Weight function: w(u,v) = exp(-{kappa}*(u^2 + v^2))")
+    print(f"  Weight function: w(u,v) = (kappa/pi) exp(-kappa(u^2+v^2)), "
+          f"kappa={kappa}  [Assumption C2, main_v23.tex]")
     print(f"  Reparameterization: (sigma, pi_1) instead of (varsigma_1, varsigma_2)")
     print(f"{'='*70}")
 
@@ -562,7 +743,7 @@ def run_study_reparam(sample_sizes: List[int] = [250, 500, 1000, 10000],
 
         # Save per-n results
         with open(os.path.join(output_dir, f'summary_n{n}.txt'), 'w') as f:
-            f.write(f"Subsampling Results (reparam + Gaussian weights κ={kappa})\n")
+            f.write(f"Subsampling Results (reparam, Assumption C2, kappa={kappa})\n")
             f.write(f"n={n}, b={b}, M={M}\n")
             f.write("=" * 80 + "\n")
             f.write(df.to_string(index=False) + "\n")
@@ -572,7 +753,8 @@ def run_study_reparam(sample_sizes: List[int] = [250, 500, 1000, 10000],
     # Combined summary
     with open(os.path.join(output_dir, 'summary_all.txt'), 'w') as f:
         f.write("SUBSAMPLING CONVERGENCE STUDY (REPARAMETERIZED + GAUSSIAN WEIGHTS)\n")
-        f.write(f"Weight function: w(u,v) = exp(-{kappa}*(u^2 + v^2))\n")
+        f.write(f"Weight function: w(u,v) = (kappa/pi) exp(-kappa(u^2+v^2)), "
+                f"kappa={kappa}  [Assumption C2, main_v23.tex]\n")
         f.write("=" * 80 + "\n\n")
         for n in sample_sizes:
             a = all_agg[n]
