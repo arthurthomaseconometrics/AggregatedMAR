@@ -6,7 +6,9 @@
 \toprule
 Sample Size $n$ & Subsample Size $b$ & Non-overlapping Blocks $N_b$ & MC Replications $M$ \\
 \midrule
-250 & 39 & 6 & 6 \\
+250 & 39 & 6 & 200 \\
+500 & 62 & 8 & 200 \\
+1{,}000 & 99 & 10 & 200 \\
 \bottomrule
 \end{tabular}
 \begin{flushleft}
@@ -32,11 +34,25 @@ $n$ & Param.\ & True & Avg.\ Est.\ & Std.\ Est.\ & Dev.\ Mean & Skew & Kurt & qC
 & $\sigma$ & 1.60 & 1.513 & 0.281 & $0.15$ & $0.37$ & $0.03$ & 0.455 & 0.500 & 0.600 & 0.695 \\
 & $\pi_1$ & 0.4375 & 0.363 & 0.205 & $-0.17$ & $0.13$ & $-0.10$ & 0.420 & 0.445 & 0.565 & 0.595 \\
 & $\alpha$ & 1.50 & 1.497 & 0.159 & $0.46$ & $-0.12$ & $-0.67$ & 0.580 & 0.590 & 0.740 & 0.795 \\
+\midrule
+\multirow{5}{*}{$500$}
+& $\psi_1$ & 0.80 & 0.810 & 0.098 & $-0.14$ & $-0.59$ & $0.36$ & 0.495 & 0.525 & 0.650 & 0.720 \\
+& $\psi_2$ & 0.30 & 0.282 & 0.207 & $0.69$ & $0.15$ & $-0.28$ & 0.350 & 0.350 & 0.475 & 0.535 \\
+& $\sigma$ & 1.60 & 1.537 & 0.218 & $-0.06$ & $0.32$ & $-0.07$ & 0.565 & 0.590 & 0.615 & 0.730 \\
+& $\pi_1$ & 0.4375 & 0.394 & 0.181 & $-0.45$ & $0.28$ & $-0.26$ & 0.360 & 0.405 & 0.515 & 0.590 \\
+& $\alpha$ & 1.50 & 1.501 & 0.121 & $0.41$ & $-0.09$ & $-0.58$ & 0.655 & 0.680 & 0.780 & 0.840 \\
+\midrule
+\multirow{5}{*}{$1{,}000$}
+& $\psi_1$ & 0.80 & 0.803 & 0.073 & $-0.05$ & $-0.32$ & $0.00$ & 0.605 & 0.650 & 0.785 & 0.810 \\
+& $\psi_2$ & 0.30 & 0.269 & 0.161 & $0.92$ & $0.15$ & $-0.51$ & 0.455 & 0.460 & 0.620 & 0.690 \\
+& $\sigma$ & 1.60 & 1.566 & 0.157 & $-0.34$ & $0.27$ & $-0.08$ & 0.685 & 0.720 & 0.760 & 0.815 \\
+& $\pi_1$ & 0.4375 & 0.429 & 0.144 & $-0.87$ & $0.24$ & $-0.10$ & 0.380 & 0.450 & 0.565 & 0.655 \\
+& $\alpha$ & 1.50 & 1.502 & 0.079 & $0.34$ & $-0.11$ & $-0.51$ & 0.790 & 0.835 & 0.865 & 0.920 \\
 \bottomrule
 \end{tabular}%
 }
 \begin{flushleft}
-\footnotesize\textit{Notes:} Avg.~Est.\ and Std.~Est.\ are the mean and standard deviation of $\hat{\vartheta}_n$ over $M=6$ replications.  Dev.~Mean, Skew, and Kurt are the mean, skewness and excess kurtosis of the non-overlapping block scaled deviations $Z^{(i)}_b$, pooled across replications.  qCov and nCov denote the average coverage of quantile-based and normal-approximation confidence intervals.  The full-sample and block estimators are the same functional, evaluated with identical starting values and optimizer tolerances.
+\footnotesize\textit{Notes:} Avg.~Est.\ and Std.~Est.\ are the mean and standard deviation of $\hat{\vartheta}_n$ over $M=200$ replications.  Dev.~Mean, Skew, and Kurt are the mean, skewness and excess kurtosis of the non-overlapping block scaled deviations $Z^{(i)}_b$, pooled across replications.  qCov and nCov denote the average coverage of quantile-based and normal-approximation confidence intervals.  The full-sample and block estimators are the same functional, evaluated with identical starting values and optimizer tolerances.
 \end{flushleft}
 \end{table}
 
@@ -71,4 +87,70 @@ $\alpha$ & 1.500 & 1.497 & 0.159 & $0.46$ & 1.899 & $-0.12$ & $-0.67$ & 0.090 & 
 \includegraphics[width=\textwidth]{resultats_reparam/diagnostics_n250.png}
 \caption{Diagnostic plots for scaled subsample deviations (reparameterized) at $n = 250$. For each parameter (rows), we display: (left) histogram with standard normal overlay, (center) Q-Q plot against standard normal quantiles, and (right) kernel density estimate compared to the standard normal density.}
 \label{fig:diagnostics_n250}
+\end{figure}
+
+
+\begin{table}[htbp]
+\centering
+\caption{Subsampling results (reparameterized) for $n = 500$ ($b = 62$, $N_b = 8$, $M = 200$)}
+\label{tab:subsampling_n500}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccccccccccc}
+\toprule
+& & & & & & & & & \multicolumn{2}{c}{Quantile CI} & \multicolumn{2}{c}{Normal CI} \\
+\cmidrule(lr){10-11} \cmidrule(lr){12-13}
+Parameter & True & Avg Est.\ & Std Est.\ & Dev.\ Mean & Dev.\ Std & Skew & Kurt & SW Rej.\ & JB Rej.\ & qCov90 & qCov95 & nCov90 & nCov95 \\
+\midrule
+$\rho_1$ & 0.800 & 0.810 & 0.098 & $-0.14$ & 1.430 & $-0.59$ & $0.36$ & 0.235 & 0.000 & 0.495 & 0.525 & 0.650 & 0.720 \\
+$\rho_2$ & 0.300 & 0.282 & 0.207 & $0.69$ & 2.506 & $0.15$ & $-0.28$ & 0.280 & 0.000 & 0.350 & 0.350 & 0.475 & 0.535 \\
+$\sigma$ & 1.600 & 1.537 & 0.218 & $-0.06$ & 3.242 & $0.32$ & $-0.07$ & 0.060 & 0.005 & 0.565 & 0.590 & 0.615 & 0.730 \\
+$\pi_1$ & 0.437 & 0.394 & 0.181 & $-0.45$ & 2.080 & $0.28$ & $-0.26$ & 0.105 & 0.005 & 0.360 & 0.405 & 0.515 & 0.590 \\
+$\alpha$ & 1.500 & 1.501 & 0.121 & $0.41$ & 2.068 & $-0.09$ & $-0.58$ & 0.065 & 0.000 & 0.655 & 0.680 & 0.780 & 0.840 \\
+\bottomrule
+\end{tabular}%
+}
+\begin{flushleft}
+\footnotesize\textit{Notes:} See notes to Table~\ref{tab:subsampling_n250}.
+\end{flushleft}
+\end{table}
+
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{resultats_reparam/diagnostics_n500.png}
+\caption{Diagnostic plots for scaled subsample deviations (reparameterized) at $n = 500$. See caption to Figure~\ref{fig:diagnostics_n250} for details.}
+\label{fig:diagnostics_n500}
+\end{figure}
+
+
+\begin{table}[htbp]
+\centering
+\caption{Subsampling results (reparameterized) for $n = 1{,}000$ ($b = 99$, $N_b = 10$, $M = 200$)}
+\label{tab:subsampling_n1000}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccccccccccc}
+\toprule
+& & & & & & & & & \multicolumn{2}{c}{Quantile CI} & \multicolumn{2}{c}{Normal CI} \\
+\cmidrule(lr){10-11} \cmidrule(lr){12-13}
+Parameter & True & Avg Est.\ & Std Est.\ & Dev.\ Mean & Dev.\ Std & Skew & Kurt & SW Rej.\ & JB Rej.\ & qCov90 & qCov95 & nCov90 & nCov95 \\
+\midrule
+$\rho_1$ & 0.800 & 0.803 & 0.073 & $-0.05$ & 1.552 & $-0.32$ & $0.00$ & 0.190 & 0.000 & 0.605 & 0.650 & 0.785 & 0.810 \\
+$\rho_2$ & 0.300 & 0.269 & 0.161 & $0.92$ & 2.849 & $0.15$ & $-0.51$ & 0.320 & 0.000 & 0.455 & 0.460 & 0.620 & 0.690 \\
+$\sigma$ & 1.600 & 1.566 & 0.157 & $-0.34$ & 3.828 & $0.27$ & $-0.08$ & 0.075 & 0.000 & 0.685 & 0.720 & 0.760 & 0.815 \\
+$\pi_1$ & 0.437 & 0.429 & 0.144 & $-0.87$ & 2.352 & $0.24$ & $-0.10$ & 0.130 & 0.010 & 0.380 & 0.450 & 0.565 & 0.655 \\
+$\alpha$ & 1.500 & 1.502 & 0.079 & $0.34$ & 2.347 & $-0.11$ & $-0.51$ & 0.040 & 0.005 & 0.790 & 0.835 & 0.865 & 0.920 \\
+\bottomrule
+\end{tabular}%
+}
+\begin{flushleft}
+\footnotesize\textit{Notes:} See notes to Table~\ref{tab:subsampling_n250}.
+\end{flushleft}
+\end{table}
+
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{resultats_reparam/diagnostics_n1000.png}
+\caption{Diagnostic plots for scaled subsample deviations (reparameterized) at $n = 1{,}000$. See caption to Figure~\ref{fig:diagnostics_n250} for details.}
+\label{fig:diagnostics_n1000}
 \end{figure}
