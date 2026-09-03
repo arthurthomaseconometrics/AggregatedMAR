@@ -9,6 +9,7 @@ Sample Size $n$ & Subsample Size $b$ & Non-overlapping Blocks $N_b$ & MC Replica
 250 & 39 & 6 & 200 \\
 500 & 62 & 8 & 200 \\
 1{,}000 & 99 & 10 & 200 \\
+10{,}000 & 464 & 21 & 200 \\
 \bottomrule
 \end{tabular}
 \begin{flushleft}
@@ -48,6 +49,13 @@ $n$ & Param.\ & True & Avg.\ Est.\ & Std.\ Est.\ & Dev.\ Mean & Skew & Kurt & qC
 & $\sigma$ & 1.60 & 1.566 & 0.157 & $-0.34$ & $0.27$ & $-0.08$ & 0.685 & 0.720 & 0.760 & 0.815 \\
 & $\pi_1$ & 0.4375 & 0.429 & 0.144 & $-0.87$ & $0.24$ & $-0.10$ & 0.380 & 0.450 & 0.565 & 0.655 \\
 & $\alpha$ & 1.50 & 1.502 & 0.079 & $0.34$ & $-0.11$ & $-0.51$ & 0.790 & 0.835 & 0.865 & 0.920 \\
+\midrule
+\multirow{5}{*}{$10{,}000$}
+& $\psi_1$ & 0.80 & 0.801 & 0.019 & $0.21$ & $0.22$ & $-0.50$ & 0.865 & 0.900 & 0.920 & 0.970 \\
+& $\psi_2$ & 0.30 & 0.293 & 0.044 & $0.23$ & $0.13$ & $-0.77$ & 0.780 & 0.795 & 0.890 & 0.945 \\
+& $\sigma$ & 1.60 & 1.597 & 0.051 & $-1.25$ & $0.11$ & $-0.44$ & 0.830 & 0.865 & 0.845 & 0.920 \\
+& $\pi_1$ & 0.4375 & 0.437 & 0.039 & $-1.05$ & $-0.31$ & $-0.41$ & 0.830 & 0.855 & 0.905 & 0.945 \\
+& $\alpha$ & 1.50 & 1.501 & 0.026 & $0.15$ & $-0.08$ & $-0.10$ & 0.895 & 0.955 & 0.900 & 0.940 \\
 \bottomrule
 \end{tabular}%
 }
@@ -153,4 +161,37 @@ $\alpha$ & 1.500 & 1.502 & 0.079 & $0.34$ & 2.347 & $-0.11$ & $-0.51$ & 0.040 & 
 \includegraphics[width=\textwidth]{resultats_reparam/diagnostics_n1000.png}
 \caption{Diagnostic plots for scaled subsample deviations (reparameterized) at $n = 1{,}000$. See caption to Figure~\ref{fig:diagnostics_n250} for details.}
 \label{fig:diagnostics_n1000}
+\end{figure}
+
+
+\begin{table}[htbp]
+\centering
+\caption{Subsampling results (reparameterized) for $n = 10{,}000$ ($b = 464$, $N_b = 21$, $M = 200$)}
+\label{tab:subsampling_n10000}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccccccccccc}
+\toprule
+& & & & & & & & & \multicolumn{2}{c}{Quantile CI} & \multicolumn{2}{c}{Normal CI} \\
+\cmidrule(lr){10-11} \cmidrule(lr){12-13}
+Parameter & True & Avg Est.\ & Std Est.\ & Dev.\ Mean & Dev.\ Std & Skew & Kurt & SW Rej.\ & JB Rej.\ & qCov90 & qCov95 & nCov90 & nCov95 \\
+\midrule
+$\rho_1$ & 0.800 & 0.801 & 0.019 & $0.21$ & 2.186 & $0.22$ & $-0.50$ & 0.240 & 0.005 & 0.865 & 0.900 & 0.920 & 0.970 \\
+$\rho_2$ & 0.300 & 0.293 & 0.044 & $0.23$ & 4.403 & $0.13$ & $-0.77$ & 0.290 & 0.000 & 0.780 & 0.795 & 0.890 & 0.945 \\
+$\sigma$ & 1.600 & 1.597 & 0.051 & $-1.25$ & 4.718 & $0.11$ & $-0.44$ & 0.065 & 0.005 & 0.830 & 0.865 & 0.845 & 0.920 \\
+$\pi_1$ & 0.437 & 0.437 & 0.039 & $-1.05$ & 3.895 & $-0.31$ & $-0.41$ & 0.230 & 0.020 & 0.830 & 0.855 & 0.905 & 0.945 \\
+$\alpha$ & 1.500 & 1.501 & 0.026 & $0.15$ & 2.593 & $-0.08$ & $-0.10$ & 0.055 & 0.030 & 0.895 & 0.955 & 0.900 & 0.940 \\
+\bottomrule
+\end{tabular}%
+}
+\begin{flushleft}
+\footnotesize\textit{Notes:} See notes to Table~\ref{tab:subsampling_n250}.
+\end{flushleft}
+\end{table}
+
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{resultats_reparam/diagnostics_n10000.png}
+\caption{Diagnostic plots for scaled subsample deviations (reparameterized) at $n = 10{,}000$. See caption to Figure~\ref{fig:diagnostics_n250} for details.}
+\label{fig:diagnostics_n10000}
 \end{figure}
