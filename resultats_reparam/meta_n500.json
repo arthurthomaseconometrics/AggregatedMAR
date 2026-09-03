@@ -1,0 +1,14 @@
+{
+  "n": 500,
+  "b": 62,
+  "Nb": 8,
+  "M": 200,
+  "ci_step": 1,
+  "n_ov": 439,
+  "n_pooled": 1600,
+  "n_starts": 2,
+  "kappa": 1.0,
+  "seed": 42,
+  "b_exponent": 0.6666666666666666,
+  "note": "backfilled from the local run of 2026-09-03"
+}

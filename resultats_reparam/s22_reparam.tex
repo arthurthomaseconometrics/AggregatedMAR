@@ -1,0 +1,74 @@
+\begin{table}[!h]
+\centering
+\caption{Monte Carlo Design Parameters}
+\label{tab:mc_design}
+\begin{tabular}{ccccc}
+\toprule
+Sample Size $n$ & Subsample Size $b$ & Non-overlapping Blocks $N_b$ & MC Replications $M$ \\
+\midrule
+250 & 39 & 6 & 6 \\
+\bottomrule
+\end{tabular}
+\begin{flushleft}
+\footnotesize\textit{Notes:} The subsample size is set to $b = \lfloor n^{2/3} \rfloor$ following \cite{PR99}.  $N_b = \lfloor n/b \rfloor$ denotes the number of non-overlapping blocks per replication.
+\end{flushleft}
+\end{table}
+
+
+\begin{table}[!h]
+\centering
+\caption{Summary of unrestricted subsampling results (reparameterized space)}
+\label{tab:subsampling_summary}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccccccccc}
+\toprule
+& & & & & & & \multicolumn{2}{c}{Quantile CI} & \multicolumn{2}{c}{Normal CI} \\
+\cmidrule(lr){8-9} \cmidrule(lr){10-11}
+$n$ & Param.\ & True & Avg.\ Est.\ & Std.\ Est.\ & Dev.\ Mean & Skew & Kurt & qCov90 & qCov95 & nCov90 & nCov95 \\
+\midrule
+\multirow{5}{*}{$250$}
+& $\psi_1$ & 0.80 & 0.807 & 0.124 & $-0.20$ & $-0.69$ & $0.62$ & 0.440 & 0.475 & 0.585 & 0.665 \\
+& $\psi_2$ & 0.30 & 0.326 & 0.231 & $0.35$ & $0.10$ & $-0.19$ & 0.345 & 0.345 & 0.460 & 0.520 \\
+& $\sigma$ & 1.60 & 1.513 & 0.281 & $0.15$ & $0.37$ & $0.03$ & 0.455 & 0.500 & 0.600 & 0.695 \\
+& $\pi_1$ & 0.4375 & 0.363 & 0.205 & $-0.17$ & $0.13$ & $-0.10$ & 0.420 & 0.445 & 0.565 & 0.595 \\
+& $\alpha$ & 1.50 & 1.497 & 0.159 & $0.46$ & $-0.12$ & $-0.67$ & 0.580 & 0.590 & 0.740 & 0.795 \\
+\bottomrule
+\end{tabular}%
+}
+\begin{flushleft}
+\footnotesize\textit{Notes:} Avg.~Est.\ and Std.~Est.\ are the mean and standard deviation of $\hat{\vartheta}_n$ over $M=6$ replications.  Dev.~Mean, Skew, and Kurt are the mean, skewness and excess kurtosis of the non-overlapping block scaled deviations $Z^{(i)}_b$, pooled across replications.  qCov and nCov denote the average coverage of quantile-based and normal-approximation confidence intervals.  The full-sample and block estimators are the same functional, evaluated with identical starting values and optimizer tolerances.
+\end{flushleft}
+\end{table}
+
+
+\begin{table}[htbp]
+\centering
+\caption{Subsampling results (reparameterized) for $n = 250$ ($b = 39$, $N_b = 6$, $M = 200$)}
+\label{tab:subsampling_n250}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccccccccccc}
+\toprule
+& & & & & & & & & \multicolumn{2}{c}{Quantile CI} & \multicolumn{2}{c}{Normal CI} \\
+\cmidrule(lr){10-11} \cmidrule(lr){12-13}
+Parameter & True & Avg Est.\ & Std Est.\ & Dev.\ Mean & Dev.\ Std & Skew & Kurt & SW Rej.\ & JB Rej.\ & qCov90 & qCov95 & nCov90 & nCov95 \\
+\midrule
+$\rho_1$ & 0.800 & 0.807 & 0.124 & $-0.20$ & 1.314 & $-0.69$ & $0.62$ & 0.180 & 0.000 & 0.440 & 0.475 & 0.585 & 0.665 \\
+$\rho_2$ & 0.300 & 0.326 & 0.231 & $0.35$ & 2.062 & $0.10$ & $-0.19$ & 0.185 & 0.000 & 0.345 & 0.345 & 0.460 & 0.520 \\
+$\sigma$ & 1.600 & 1.513 & 0.281 & $0.15$ & 3.078 & $0.37$ & $0.03$ & 0.030 & 0.000 & 0.455 & 0.500 & 0.600 & 0.695 \\
+$\pi_1$ & 0.437 & 0.363 & 0.205 & $-0.17$ & 1.737 & $0.13$ & $-0.10$ & 0.090 & 0.000 & 0.420 & 0.445 & 0.565 & 0.595 \\
+$\alpha$ & 1.500 & 1.497 & 0.159 & $0.46$ & 1.899 & $-0.12$ & $-0.67$ & 0.090 & 0.000 & 0.580 & 0.590 & 0.740 & 0.795 \\
+\bottomrule
+\end{tabular}%
+}
+\begin{flushleft}
+\footnotesize\textit{Notes:} All results are in the reparameterized space $(\rho_1, \rho_2, \sigma, \pi_1, \alpha)$.  The full-sample estimator $\hat{\vartheta}_n$ and every block estimator $\hat{\vartheta}^{(i)}_b$ are the same functional: identical criterion, grid, starting values, bounds and optimizer tolerances, as required by the subsampling theory of \cite{PR94}.  Dev.~Mean, Dev.~Std, Skew and Kurt are computed on the non-overlapping block deviations $Z^{(i)}_b$ pooled across all $M = 200$ replications (1{,}200 values per parameter).  SW and JB rejection rates are per-replication rejection frequencies at the 5\% level.  qCov and nCov denote quantile-based and normal-approximation CI coverage; confidence intervals use the 212 overlapping blocks (all $n - b + 1$ of them, no thinning), while the normality diagnostics use the non-overlapping blocks.
+\end{flushleft}
+\end{table}
+
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{resultats_reparam/diagnostics_n250.png}
+\caption{Diagnostic plots for scaled subsample deviations (reparameterized) at $n = 250$. For each parameter (rows), we display: (left) histogram with standard normal overlay, (center) Q-Q plot against standard normal quantiles, and (right) kernel density estimate compared to the standard normal density.}
+\label{fig:diagnostics_n250}
+\end{figure}

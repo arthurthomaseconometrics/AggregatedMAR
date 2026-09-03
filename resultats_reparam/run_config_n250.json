@@ -1,0 +1,40 @@
+{
+  "section": "S.2.2 (app:subsampling_reparam)",
+  "sample_sizes": [
+    250
+  ],
+  "M": 6,
+  "b_exponent": 0.6666666666666666,
+  "kappa": 1.0,
+  "seed": 42,
+  "true_params": [
+    0.8,
+    0.3,
+    0.7,
+    0.9,
+    1.5,
+    0.0
+  ],
+  "n_cores": -1,
+  "n_starts": 2,
+  "ci_step": null,
+  "ov_blocks_target": 2000,
+  "optimizer": "L-BFGS-B",
+  "mde_gtol": 1e-12,
+  "mde_ftol": 1e-16,
+  "mde_maxiter": 2000,
+  "audit_fixes": [
+    "explicit L-BFGS-B gtol/ftol (cf_weights.MDE_GTOL)",
+    "single MDE functional for full sample and blocks (Politis-Romano)",
+    "Assumption C1 ordering enforced (subsampling_reparam.canonical_order)",
+    "burn-in kept on the correct side of the backward recursion",
+    "independent per-component seed streams",
+    "pooled non-overlapping deviations for Dev.Mean/Std/Skew/Kurt"
+  ],
+  "python_version": "3.13.14 (v3.13.14:fd17997c386, Jun 10 2026, 08:55:00) [Clang 21.0.0 (clang-2100.1.1.101)]",
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "numpy_version": "2.5.0",
+  "scipy_version": "1.18.0",
+  "pandas_version": "3.0.3",
+  "timestamp": "2026-09-03 10:57:22"
+}
