@@ -1,0 +1,34 @@
+{
+  "target": "online_supplement3.tex :: fig:bubble_forecast_component1 (figures/InSForeprob2020Obs1AllRisk.pdf)",
+  "data_file": "data/OVX_History.csv",
+  "T": 518,
+  "sample_note": "T = 518, 2015-05-31 to 2025-04-27.",
+  "component": 1,
+  "psi": 0.7989,
+  "alpha": 1.4686,
+  "k0": 3,
+  "k0_mode": "published",
+  "cutoff": "2020-01-05",
+  "cutoff_index": 240,
+  "anchor_mode": "estimated",
+  "anchor_value": 11.271398,
+  "m": 20,
+  "horizon": 20,
+  "vartheta": 1,
+  "thresholds": [
+    0.9,
+    0.95,
+    0.99
+  ],
+  "crash_horizons": {
+    "0.9": 7,
+    "0.95": 10,
+    "0.99": 14
+  },
+  "python_version": "3.13.14 (v3.13.14:fd17997c386, Jun 10 2026, 08:55:00) [Clang 21.0.0 (clang-2100.1.1.101)]",
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "numpy_version": "2.5.0",
+  "scipy_version": "1.18.0",
+  "pandas_version": "3.0.3",
+  "timestamp": "2026-09-04 16:55:34"
+}

@@ -1,0 +1,28 @@
+{
+  "target": "online_supplement3.tex :: fig:ovx_deconv (figures/OVXDeconv48.pdf)",
+  "data_file": "data/OVX_History.csv",
+  "T": 518,
+  "sample_note": "T = 518, 2015-05-31 to 2025-04-27.",
+  "params": {
+    "rho_1": 0.7989,
+    "rho_2": 0.847,
+    "alpha": 1.4686,
+    "beta": -0.1275,
+    "sigma": 2.0932,
+    "pi_1": 0.279,
+    "pi_2": 0.721,
+    "varsigma_1": 0.5840028,
+    "varsigma_2": 1.5091972
+  },
+  "spec": "gas",
+  "n_particles": 1000,
+  "window_size": 5,
+  "seed": 11,
+  "n_jobs": 4,
+  "python_version": "3.13.14 (v3.13.14:fd17997c386, Jun 10 2026, 08:55:00) [Clang 21.0.0 (clang-2100.1.1.101)]",
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "numpy_version": "2.5.0",
+  "scipy_version": "1.18.0",
+  "pandas_version": "3.0.3",
+  "timestamp": "2026-09-04 16:57:22"
+}

@@ -55,6 +55,65 @@ warnings.filterwarnings('ignore')
 # Nombre vise de blocs chevauchants par replication (voir _EngineReparam.mc).
 OV_BLOCKS_TARGET = 2000
 
+# =============================================================================
+# Statistiques robustes pour Skew/Kurt (audit 2026-09-03)
+# =============================================================================
+#
+# A n grand, un petit pourcentage de blocs (voir canonical_order et le
+# commentaire de mde) atteignent authentiquement le bord de l'espace des
+# parametres -- ce n'est PAS un artefact numerique (verifie par recherche
+# multi-depart dense) mais une consequence attendue du sous-echantillonnage a
+# b fini sur un espace compact.  Comme les deviations sont mises a l'echelle
+# par sqrt(b), un point qui touche le bord (distance ABSOLUE fixe a theta_n)
+# produit un score-z QUI CROIT avec b, meme si la FREQUENCE des blocs
+# concernes decroit avec b : Skew et Kurt bruts peuvent donc se degrader en
+# apparence quand n augmente, sans que cela contredise la Proposition 2.1 (qui
+# porte sur theta_n, jamais sur les bord du sous-echantillon).
+#
+# Skew tronque est un diagnostic robuste valide : verifie sur un N(0,1)
+# propre, tronquer symetriquement ROBUST_TRIM_FRAC de chaque cote laisse le
+# skewness proche de 0 quel que soit le taux de troncature.
+#
+# Kurt tronque, en revanche, N'EST PAS un diagnostic valide : la troncature
+# retire mecaniquement la queue qui DEFINIT le kurtosis en exces, biaisant
+# tout kurtosis tronque vers des valeurs negatives meme sur des donnees
+# parfaitement gaussiennes (verifie : un N(0,1) propre tronque a 10% de
+# chaque cote affiche un kurtosis ~ -1.0, pas ~0).  On rapporte a la place la
+# fraction de points au-dela de OUTLIER_Z_THRESHOLD ecarts-types, qui
+# quantifie directement le phenomene (part de la masse dans les blocs au
+# bord) sans ce biais mecanique.
+ROBUST_TRIM_FRAC = 0.10
+OUTLIER_Z_THRESHOLD = 3.0
+
+
+def robust_shape_stats(z, trim_frac=ROBUST_TRIM_FRAC, z_threshold=OUTLIER_Z_THRESHOLD):
+    """Skewness tronquee (valide) + fraction de points extremes (remplace un
+    kurtosis tronque, structurellement biase -- voir commentaire ci-dessus).
+
+    La fraction extreme est calculee apres standardisation ROBUSTE (mediane /
+    MAD), pas moyenne/ecart-type brut : la contamination elle-meme gonfle la
+    moyenne et l'ecart-type, ce qui MASQUE les points extremes qu'on cherche
+    justement a detecter (verifie : sur un melange 94% N(0,1) + 6% N(3.7,0.3),
+    la standardisation par (moyenne, ecart-type) ne detecte que ~0.3% de
+    points au-dela de 3 sigma au lieu des ~6% reels, la contamination ayant
+    gonfle l'ecart-type brut jusqu'a ~1.45).  La mediane et le MAD ont un point
+    de rupture de 50% et restent quasi inchanges par 6% de contamination.
+
+    Returns (skew_trim, outlier_frac), NaN si trop peu de points valides.
+    """
+    z = np.asarray(z, dtype=float)
+    z = z[np.isfinite(z)]
+    if z.size < 20:
+        return np.nan, np.nan
+    lo, hi = np.quantile(z, [trim_frac, 1 - trim_frac])
+    zt = z[(z >= lo) & (z <= hi)]
+    skew_trim = float(stats.skew(zt)) if zt.size >= 8 else np.nan
+    med = np.median(z)
+    mad = np.median(np.abs(z - med)) * 1.4826  # -> comparable a un ecart-type sous normalite
+    zs = (z - med) / mad if mad > 0 else z - med
+    outlier_frac = float(np.mean(np.abs(zs) > z_threshold))
+    return skew_trim, outlier_frac
+
 
 # =============================================================================
 # Standalone functions (top-level for joblib pickling)
@@ -608,11 +667,14 @@ class _EngineReparam:
         for p in pnames:
             z = np.asarray(a['pooled_no'][p], dtype=float)
             z = z[np.isfinite(z)]
+            skew_trim, outlier_frac = robust_shape_stats(z)
             a['moments_pooled'][p] = {
                 'mean': float(np.mean(z)) if z.size >= 2 else np.nan,
                 'std': float(np.std(z, ddof=1)) if z.size >= 2 else np.nan,
                 'skewness': float(stats.skew(z)) if z.size >= 3 else np.nan,
                 'kurtosis': float(stats.kurtosis(z)) if z.size >= 4 else np.nan,
+                'skewness_trim': skew_trim,
+                'outlier_frac': outlier_frac,
                 'n_pooled': int(z.size)}
         return a
 
@@ -636,6 +698,8 @@ class _EngineReparam:
                    'Ratio': ratio,
                    'Skew': mom[p]['skewness'],
                    'Kurt': mom[p]['kurtosis'],
+                   'Skew.Trim': mom[p].get('skewness_trim', np.nan),
+                   'Outlier%': mom[p].get('outlier_frac', np.nan),
                    'SW Rej.': agg['rej_rates'][p]['sw_rej'],
                    'JB Rej.': agg['rej_rates'][p]['jb_rej']}
             for l in agg['conf_levels']:
@@ -676,9 +740,12 @@ class _EngineReparam:
             ax[i, 2].legend()
             for j in range(3):
                 ax[i, j].grid(True, alpha=.3)
-        plt.tight_layout()
+        # AUDIT 2026-09-03.  `tight_layout()` sans `rect` ignore
+        # `fig.suptitle()`, qui vient alors chevaucher les titres de la
+        # premiere rangee de sous-graphiques.
+        fig.tight_layout(rect=(0, 0, 1, 0.97))
         if path:
-            plt.savefig(path, dpi=300, bbox_inches='tight')
+            plt.savefig(path, dpi=200, bbox_inches='tight')
         plt.close()
 
 

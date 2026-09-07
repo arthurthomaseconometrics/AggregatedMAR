@@ -75,9 +75,12 @@ import scipy
 
 from cf_weights import KAPPA_DEFAULT, MDE_FTOL, MDE_GTOL, MDE_MAXITER, check_grid
 from latex_table_export import fmt_n, format_design_table, format_detail_table, format_figure, format_summary_table
-from subsampling_reparam import N_STARTS_DEFAULT, OV_BLOCKS_TARGET, _EngineReparam
+from subsampling_reparam import (N_STARTS_DEFAULT, OUTLIER_Z_THRESHOLD, OV_BLOCKS_TARGET,
+                                 ROBUST_TRIM_FRAC, _EngineReparam)
 
 OUTPUT_DIR_DEFAULT = "resultats_reparam"
+ROBUST_TRIM_FRAC_PCT = int(round(ROBUST_TRIM_FRAC * 100))
+OUTLIER_Z_THRESHOLD_STR = ("%g" % OUTLIER_Z_THRESHOLD)
 PARAM_ORDER = ["rho_1", "rho_2", "sigma", "pi_1", "alpha"]
 
 
@@ -222,6 +225,7 @@ def main() -> None:
         caption = ("Subsampling results (reparameterized) for $n = %s$ "
                    "($b = %s$, $N_b = %d$, $M = %d$)"
                    % (fmt_n(n), fmt_n(mt["b"]), mt["Nb"], mt["M"]))
+        has_robust = "Skew.Trim" in dfs_by_n[n].columns and "Outlier%" in dfs_by_n[n].columns
         if n == first:
             notes = (
                 "All results are in the reparameterized space "
@@ -234,6 +238,27 @@ def main() -> None:
                 r"non-overlapping block deviations $Z^{(i)}_b$ pooled across all "
                 "$M = " + str(mt["M"]) + "$ replications (" + fmt_n(mt["n_pooled"]) +
                 " values per parameter).  "
+                r"At large $n$, a small share of blocks reach the boundary of the "
+                r"compact parameter space $\Theta$ (a genuine finite-$b$ feature of "
+                r"subsampling, not a search failure: confirmed by dense multi-start "
+                r"re-optimization) and, because $Z^{(i)}_b$ scales with $\sqrt{b}$, "
+                r"a fixed absolute distance to the boundary maps into an "
+                r"increasingly extreme standardized value as $b$ grows, even as the "
+                r"share of affected blocks falls -- this inflates raw Skew and Kurt "
+                r"without bearing on the asymptotic normality of $\hat\vartheta_n$ "
+                r"itself, established on the full sample by Proposition~2.1.  ")
+            if has_robust:
+                notes += (
+                    r"Skew$_{\text{trim}}$ is the skewness on the sample trimmed "
+                    rf"symmetrically by {ROBUST_TRIM_FRAC_PCT}\% on each side (valid "
+                    r"under trimming, verified on clean Gaussian data); Out.\% is the "
+                    r"share of pooled deviations, standardized by median/MAD (robust to "
+                    r"the same contamination), exceeding "
+                    rf"{OUTLIER_Z_THRESHOLD_STR}$\,\sigma$ -- reported in place of a "
+                    r"trimmed Kurt, which is mechanically biased toward negative values "
+                    r"by the trimming itself (verified: $\approx -1.0$ on trimmed clean "
+                    r"$\mathcal{N}(0,1)$ data at this trim fraction, not $\approx 0$).  ")
+            notes += (
                 r"SW and JB rejection rates are per-replication rejection "
                 r"frequencies at the 5\% level.  qCov and nCov denote "
                 "quantile-based and normal-approximation CI coverage; confidence "

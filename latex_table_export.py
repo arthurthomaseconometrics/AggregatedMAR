@@ -68,23 +68,38 @@ def format_detail_table(df: pd.DataFrame, n: int, b: int, M: int,
     df : DataFrame produit par Engine.table(agg) -- colonnes Parameter, True,
          Avg Est., Std Est., Dev.Mean, Dev.Std, Ratio, Skew, Kurt, SW Rej.,
          JB Rej., qCov90, nCov90, qCov95, nCov95 (ordre natif de l'engine).
+         Si `Skew.Trim`/`Outlier%` sont presentes (audit 2026-09-03,
+         subsampling_reparam.robust_shape_stats), deux colonnes robustes sont
+         inserees apres Kurt : Skew tronquee (valide sous troncature
+         symetrique) et fraction de points extremes standardises par
+         mediane/MAD -- PAS un "Kurt tronque", structurellement biase vers des
+         valeurs negatives par la troncature elle-meme (verifie sur donnees
+         gaussiennes propres).
 
     Reproduit exactement la mise en page de online_supplement3.tex : colonne
     Ratio supprimee (absente du document publie), colonnes de couverture
     regroupees Quantile CI (qCov90, qCov95) puis Normal CI (nCov90, nCov95).
     """
+    has_robust = "Skew.Trim" in df.columns and "Outlier%" in df.columns
+    ncols = 16 if has_robust else 14
+    colspec = "l" + "c" * ncols
+    qci_start, qci_end = (12, 13) if has_robust else (10, 11)
+    nci_start, nci_end = (14, 15) if has_robust else (12, 13)
+    blanks = "& " * (ncols - 4)
     lines = [
         r"\begin{table}[htbp]",
         r"\centering",
         rf"\caption{{{caption}}}",
         rf"\label{{{label}}}",
         r"\resizebox{\textwidth}{!}{%",
-        r"\begin{tabular}{lcccccccccccccc}",
+        rf"\begin{{tabular}}{{{colspec}}}",
         r"\toprule",
-        r"& & & & & & & & & \multicolumn{2}{c}{Quantile CI} & \multicolumn{2}{c}{Normal CI} \\",
-        r"\cmidrule(lr){10-11} \cmidrule(lr){12-13}",
+        rf"{blanks}\multicolumn{{2}}{{c}}{{Quantile CI}} & \multicolumn{{2}}{{c}}{{Normal CI}} \\",
+        rf"\cmidrule(lr){{{qci_start}-{qci_end}}} \cmidrule(lr){{{nci_start}-{nci_end}}}",
         r"Parameter & True & Avg Est.\ & Std Est.\ & Dev.\ Mean & Dev.\ Std & "
-        r"Skew & Kurt & SW Rej.\ & JB Rej.\ & qCov90 & qCov95 & nCov90 & nCov95 \\",
+        r"Skew & Kurt & "
+        + (r"Skew$_{\text{trim}}$ & Out.\% & " if has_robust else "")
+        + r"SW Rej.\ & JB Rej.\ & qCov90 & qCov95 & nCov90 & nCov95 \\",
         r"\midrule",
     ]
     for _, row in df.iterrows():
@@ -95,6 +110,11 @@ def format_detail_table(df: pd.DataFrame, n: int, b: int, M: int,
             _f(row["Avg Est."]), _f(row["Std Est."]),
             _f_signed_math(row["Dev.Mean"]), format(row["Dev.Std"], ".3f"),
             _f_signed_math(row["Skew"]), _f_signed_math(row["Kurt"]),
+        ]
+        if has_robust:
+            cells += [_f_signed_math(row["Skew.Trim"]),
+                      format(row["Outlier%"] * 100, ".1f") + r"\%"]
+        cells += [
             format(row["SW Rej."], ".3f"), format(row["JB Rej."], ".3f"),
             format(row["qCov90"], ".3f"), format(row["qCov95"], ".3f"),
             format(row["nCov90"], ".3f"), format(row["nCov95"], ".3f"),
