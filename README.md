@@ -1,7 +1,7 @@
 # Replication files — Estimating and forecasting stable aggregates of moving averages
 
-This folder reproduces every table and figure of the paper (`main_v26.tex`) and of
-its Online Supplement (`online_supplement4.tex`), including the Monte Carlo study
+This folder reproduces every table and figure of the paper and of
+its Online Supplement, including the Monte Carlo study
 of the test of $H_0:\min_j\psi_j = 0$ (Supplement, Section S.4).
 
 Everything is in Python. The Monte Carlo results that are too expensive to rerun
