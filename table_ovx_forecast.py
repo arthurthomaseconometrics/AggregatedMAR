@@ -19,7 +19,6 @@ Outputs (results_ovx_forecast/)
 Usage
 --------------------------------------------------------------------------
     python table_ovx_forecast.py
-    python table_ovx_forecast.py --anchor measured --k0 auto
     python table_ovx_forecast.py --threshold 0.95
 """
 
@@ -88,8 +87,8 @@ def to_tex(tab: pd.DataFrame, res1: Dict, res2: Dict, threshold: float,
         r"  & \multicolumn{3}{c}{Component 2 ($k_0=" + str(res2["k0"])
         + r"$, $\hat{\psi}_2=" + f"{res2['psi']:.4f}" + r"$)} \\",
         r"\cmidrule(lr){3-5}\cmidrule(lr){6-8}",
-        r"Date & $h$ & Forecast & Crash at $h$ & Survive at $h$",
-        r"          & Forecast & Crash at $h$ & Survive at $h$ \\",
+        r"Date & $h$ & Forecast & Crash by $h$ & Survive beyond $h$",
+        r"          & Forecast & Crash by $h$ & Survive beyond $h$ \\",
         r"\midrule",
     ]
     for _, r in tab.iterrows():
@@ -104,16 +103,17 @@ def to_tex(tab: pd.DataFrame, res1: Dict, res2: Dict, threshold: float,
             cells.append(oc.tex_num(r[f"survive_{tag}"]))
         lines.append(" & ".join(cells) + r" \\")
 
+    h_last = int(tab["h"].max())
     star = "; ".join(
-        f"Component {j}: $h={hs}$" if hs is not None
-        else f"Component {j}: no crash within the horizon"
+        (f"Component {j}: $h={hs}$" + (", beyond the last horizon shown" if hs > h_last else ""))
+        if hs is not None else f"Component {j}: no crash within the horizon"
         for j, hs in sorted(h_star.items()))
     lines += [
         r"\bottomrule",
         r"\end{tabular}}",
         r"\begin{flushleft}",
-        r"\footnotesize\textit{Notes:} Crash at $h$ denotes "
-        r"$1-|\psi_{j_0}|^{\alpha h}$; Survive at $h$ denotes "
+        r"\footnotesize\textit{Notes:} Crash by $h$ denotes "
+        r"$1-|\psi_{j_0}|^{\alpha h}$; Survive beyond $h$ denotes "
         r"$|\psi_{j_0}|^{\alpha h}$. $^*$Crash predicted before this horizon "
         rf"at the {pct} threshold ({star}). Forecast values after the "
         rf"predicted crash are set to zero. Pattern matching window: $m={m}$.",
@@ -133,17 +133,12 @@ def main() -> None:
     ap.add_argument("--threshold", type=float, default=0.99)
     ap.add_argument("--vartheta", type=int, default=oc.FORECAST_VARTHETA,
                     choices=(-1, 1))
-    ap.add_argument("--anchor", choices=("estimated", "measured"), default="estimated",
-                    help="level |X_t0| used to anchor the trajectory: the "
-                         "estimated cut-off level (default) or the level "
-                         "measured directly on the loaded series")
-    ap.add_argument("--k0", choices=("published", "auto"), default="published")
     args = ap.parse_args()
 
     outdir = oc.ensure_outdir(OUTDIR_NAME)
     df = oc.load_ovx(args.data)
     x = df["detrended"].to_numpy()
-    params = oc.published_params(oc.MAIN_SPEC)
+    params = oc.estimated_params(oc.MAIN_SPEC)
 
     cutoff = pd.Timestamp(args.cutoff)
     if cutoff in df.index:
@@ -159,9 +154,8 @@ def main() -> None:
     print(f"  sample: {oc.sample_note(df)}")
     print(f"  cut-off t_0 = {df.index[t]:%Y-%m-%d} (index {t})")
 
-    anchor = oc.ANCHOR_PUBLISHED if args.anchor == "estimated" else None
-    print(f"  anchor: {args.anchor} "
-          f"(|X_t0| = {anchor if anchor is not None else abs(x[t]):.4f})")
+    anchor = None      # |X_t0| measured on the series, as in the application
+    print(f"  anchor: |X_t0| = {abs(x[t]):.4f}")
 
     # --- Pattern matching ---
     pm_rows: List[Dict] = []
@@ -171,7 +165,7 @@ def main() -> None:
         k0_auto, quality, dists = oc.kfinder(x, t, psi, m=args.m,
                                              kmax=oc.FORECAST_KMAX,
                                              vartheta=args.vartheta)
-        k0_used[j] = k0_auto if args.k0 == "auto" else oc.K0_PUBLISHED[j]
+        k0_used[j] = k0_auto
         print(f"  component {j}: psi={psi:.4f}, k0={k0_used[j]}, "
               f"matching quality {quality:.4f}")
         for k in range(1, oc.FORECAST_KMAX + 1):
@@ -213,11 +207,11 @@ def main() -> None:
         "T": int(len(df)),
         "sample_note": oc.sample_note(df),
         "cutoff": f"{df.index[t]:%Y-%m-%d}", "cutoff_index": t,
-        "anchor_mode": args.anchor,
-        "anchor_value": float(anchor) if anchor is not None else float(abs(x[t])),
+        "anchor_mode": "measured",
+        "anchor_value": float(abs(x[t])),
         "m": args.m, "horizon": args.horizon, "threshold": args.threshold,
         "vartheta": args.vartheta,
-        "k0_mode": args.k0, "k0_used": k0_used,
+        "k0_mode": "kfinder", "k0_used": k0_used,
         "params": {k: float(v) for k, v in params.items()},
         "crash_horizons": {f"component_{j}": h_star[j] for j in (1, 2)},
     })

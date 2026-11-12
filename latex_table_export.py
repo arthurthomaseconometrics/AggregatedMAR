@@ -27,7 +27,7 @@ import pandas as pd
 # l'incoherence de notation presente dans le document actuel, on la
 # reproduit telle quelle plutot que de la "corriger" sans qu'on le demande.
 DETAIL_SYMBOL = {
-    "rho_1": r"$\rho_1$", "rho_2": r"$\rho_2$",
+    "rho_1": r"$\psi_1$", "rho_2": r"$\psi_2$",
     "sigma": r"$\sigma$", "pi_1": r"$\pi_1$", "alpha": r"$\alpha$",
 }
 SUMMARY_SYMBOL = {

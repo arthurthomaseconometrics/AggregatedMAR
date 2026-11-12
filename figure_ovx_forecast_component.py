@@ -30,7 +30,6 @@ Usage
 --------------------------------------------------------------------------
     python figure_ovx_forecast_component.py              # both components
     python figure_ovx_forecast_component.py --component 1
-    python figure_ovx_forecast_component.py --anchor measured
 """
 
 from __future__ import annotations
@@ -83,11 +82,11 @@ def make_figure(df: pd.DataFrame, x: np.ndarray, t: int, j: int, psi: float,
         ax = fig.add_subplot(gs[0, i])
         p = res[thr]["df_prob"]
         ax.plot(p.index, p["Crash Before h"], "b-", linewidth=2,
-                label="Crash Before h")
-        ax.plot(p.index, p["Survive at h"], "g-", linewidth=2,
-                label="Survive at h")
-        ax.plot(p.index, p["Crash at h"], "r-", marker="o", linewidth=2,
                 label="Crash at h")
+        ax.plot(p.index, p["Survive at h"], "g-", linewidth=2,
+                label="Survive beyond h")
+        ax.plot(p.index, p["Crash at h"], "r-", marker="o", linewidth=2,
+                label="Crash by h")
         ax.axhline(y=thr, color="r", alpha=0.5, linestyle="--",
                    label=f"Threshold={thr}")
         ax.set_xlabel("Horizon h", fontsize=12)
@@ -221,10 +220,10 @@ def run_one(df: pd.DataFrame, x: np.ndarray, t: int, j: int, params: Dict,
         "T": int(len(df)),
         "sample_note": oc.sample_note(df),
         "component": j, "psi": float(psi), "alpha": float(alpha),
-        "k0": k0, "k0_mode": args.k0,
+        "k0": k0, "k0_mode": "kfinder",
         "cutoff": f"{df.index[t]:%Y-%m-%d}", "cutoff_index": t,
-        "anchor_mode": args.anchor,
-        "anchor_value": float(anchor) if anchor is not None else float(abs(x[t])),
+        "anchor_mode": "measured",
+        "anchor_value": float(abs(x[t])),
         "m": args.m, "horizon": args.horizon, "vartheta": args.vartheta,
         "thresholds": list(oc.THRESHOLDS),
         "crash_horizons": {str(thr): res[thr]["h_star"] for thr in oc.THRESHOLDS},
@@ -243,33 +242,28 @@ def main() -> None:
     ap.add_argument("--horizon", type=int, default=oc.FORECAST_H)
     ap.add_argument("--vartheta", type=int, default=oc.FORECAST_VARTHETA,
                     choices=(-1, 1))
-    ap.add_argument("--anchor", choices=("estimated", "measured"), default="estimated")
-    ap.add_argument("--k0", choices=("published", "auto"), default="published")
     args = ap.parse_args()
 
     df = oc.load_ovx(args.data)
     x = df["detrended"].to_numpy()
-    params = oc.published_params(oc.MAIN_SPEC)
+    params = oc.estimated_params(oc.MAIN_SPEC)
 
     cutoff = pd.Timestamp(args.cutoff)
     t = int(df.index.get_loc(cutoff)) if cutoff in df.index \
         else int(df.index.get_indexer([cutoff], method="nearest")[0])
-    anchor = oc.ANCHOR_PUBLISHED if args.anchor == "estimated" else None
+    anchor = None      # |X_t0| measured on the series, as in the application
 
     print("=" * 72)
     print("Figures \\ref{fig:bubble_forecast_component1/2} -- OVX diagnostics")
     print("=" * 72)
     print(f"  sample: {oc.sample_note(df)}")
     print(f"  cut-off t_0 = {df.index[t]:%Y-%m-%d} (index {t}), "
-          f"anchor: {args.anchor}")
+          f"anchor: |X_t0| = {abs(x[t]):.4f}")
 
     components = [args.component] if args.component else [1, 2]
     for j in components:
-        if args.k0 == "auto":
-            k0, _, _ = oc.kfinder(x, t, params[f"rho_{j}"], m=args.m,
-                                  kmax=oc.FORECAST_KMAX, vartheta=args.vartheta)
-        else:
-            k0 = oc.K0_PUBLISHED[j]
+        k0, _, _ = oc.kfinder(x, t, params[f"rho_{j}"], m=args.m,
+                              kmax=oc.FORECAST_KMAX, vartheta=args.vartheta)
         out = run_one(df, x, t, j, params, k0, args, anchor)
         print(f"    -> {os.path.basename(out)}/")
 

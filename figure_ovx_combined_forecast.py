@@ -35,7 +35,7 @@ Usage
 --------------------------------------------------------------------------
     python figure_ovx_combined_forecast.py
     python figure_ovx_combined_forecast.py --combine sum
-    python figure_ovx_combined_forecast.py --threshold 0.95 --anchor measured
+    python figure_ovx_combined_forecast.py --threshold 0.95
 """
 
 from __future__ import annotations
@@ -82,8 +82,6 @@ def main() -> None:
     ap.add_argument("--threshold", type=float, default=0.99)
     ap.add_argument("--vartheta", type=int, default=oc.FORECAST_VARTHETA,
                     choices=(-1, 1))
-    ap.add_argument("--anchor", choices=("estimated", "measured"), default="estimated")
-    ap.add_argument("--k0", choices=("published", "auto"), default="published")
     ap.add_argument("--combine", choices=("max", "sum", "component1", "component2"),
                     default="max", help="how to combine the two components")
     ap.add_argument("--xlim", nargs=2, default=list(XLIM),
@@ -93,12 +91,12 @@ def main() -> None:
     outdir = oc.ensure_outdir(OUTDIR_NAME)
     df = oc.load_ovx(args.data)
     x = df["detrended"].to_numpy()
-    params = oc.published_params(oc.MAIN_SPEC)
+    params = oc.estimated_params(oc.MAIN_SPEC)
 
     cutoff = pd.Timestamp(args.cutoff)
     t = int(df.index.get_loc(cutoff)) if cutoff in df.index \
         else int(df.index.get_indexer([cutoff], method="nearest")[0])
-    anchor = oc.ANCHOR_PUBLISHED if args.anchor == "estimated" else None
+    anchor = None      # |X_t0| measured on the series, as in the application
 
     print("=" * 72)
     print("Figure \\ref{fig:combined_forecasts} (main_v23.tex) -- "
@@ -111,11 +109,8 @@ def main() -> None:
     trajs, k0s = {}, {}
     for j in (1, 2):
         psi = params[f"rho_{j}"]
-        if args.k0 == "auto":
-            k0, _, _ = oc.kfinder(x, t, psi, m=args.m, kmax=oc.FORECAST_KMAX,
-                                  vartheta=args.vartheta)
-        else:
-            k0 = oc.K0_PUBLISHED[j]
+        k0, _, _ = oc.kfinder(x, t, psi, m=args.m, kmax=oc.FORECAST_KMAX,
+                              vartheta=args.vartheta)
         k0s[j] = k0
         _, traj = oc.foreprob(x, k0=k0, h=args.horizon, maxp=args.threshold,
                               t=t, psi=psi, alpha=params["alpha"],
@@ -175,11 +170,11 @@ def main() -> None:
         "T": int(len(df)),
         "sample_note": oc.sample_note(df),
         "cutoff": f"{df.index[t]:%Y-%m-%d}", "cutoff_index": t,
-        "anchor_mode": args.anchor,
-        "anchor_value": float(anchor) if anchor is not None else float(abs(x[t])),
+        "anchor_mode": "measured",
+        "anchor_value": float(abs(x[t])),
         "m": args.m, "horizon": args.horizon, "threshold": args.threshold,
         "vartheta": args.vartheta,
-        "k0_mode": args.k0, "k0_used": k0s,
+        "k0_mode": "kfinder", "k0_used": k0s,
         "combine": args.combine,
         "xlim": list(args.xlim) if args.xlim else None,
         "peak_combined": float(np.max(comb)),

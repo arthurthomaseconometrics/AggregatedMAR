@@ -89,7 +89,7 @@ def make_figure(df: pd.DataFrame, X: list, params: dict) -> plt.Figure:
                 label="Filtered")
         ax.set_title(
             f"Component {j+1}: "
-            f"ρ={params[f'rho_{j+1}']:.4f}, "
+            f"ψ={params[f'rho_{j+1}']:.4f}, "
             f"π={params[f'pi_{j+1}']:.4f}, "
             f"ς={params[f'varsigma_{j+1}']:.4f}")
         ax.grid(True, alpha=0.3)
@@ -150,7 +150,7 @@ def main() -> None:
     print("=" * 72)
     print(f"  sample: {oc.sample_note(df)}")
 
-    params = oc.published_params(oc.MAIN_SPEC)
+    params = oc.estimated_params(oc.MAIN_SPEC)
 
     print(f"  parameters: rho=({params['rho_1']:.4f}, {params['rho_2']:.4f}), "
           f"alpha={params['alpha']:.4f}, beta={params['beta']:.4f}")

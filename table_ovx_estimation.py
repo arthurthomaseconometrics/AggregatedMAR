@@ -4,13 +4,13 @@ Table \ref{tab:ovx_estimation} -- "Estimation results for the OVX index under
 three specifications", Section \ref{app:ovx_estimation} of
 online_supplement3.tex.
 
-Formats the published point estimates (read off Latex/figures/OVXResults.xlsx)
-into the booktabs table used in the supplement.
+Formats the estimates of ovx_estimation/estimation.csv into the booktabs table used in the
+supplement.
 
 Outputs (results_ovx_estimation/)
 --------------------------------------------------------------------------
     table_ovx_estimation.tex     booktabs table, supplement format
-    estimation_published.csv     estimate / std. error / t-stat per specification
+    estimation_table.csv          estimate / std. error / t-stat per specification
     ovx_series.csv                series used (level, trend, detrended)
     run_config.json               settings and environment
 
@@ -41,11 +41,13 @@ TEX_SYMBOL = {
 }
 
 TABLE_NOTE = (
-    r"Asymptotic standard errors are computed using the subsampling "
-    r"methodology described in Section \ref{app:subsampling_method}. The "
-    r"$t$-statistics test the null hypothesis that each parameter equals "
-    r"zero. For the $\mathcal{S}1\mathcal{S}$ specification, $\alpha = 1$ "
-    r"is imposed.")
+    r"Minimum distance estimator with HAC weights computed at the initial guess, on the "
+    r"weekly OVX, $T = 522$; the components are ordered $\psi_1 < \psi_2$. Standard errors "
+    r"are the Hessian-based asymptotic standard errors; a dash marks a standard error that "
+    r"is not available. The $t$-statistics test the null hypothesis that each parameter "
+    r"equals zero. For the $\mathcal{S}1\mathcal{S}$ specification, $\alpha = 1$ is imposed. "
+    r"In the $\mathcal{S}\alpha\mathcal{S}$ specification, $\psi_1$ is close to the lower "
+    r"bound of the parameter space and its standard error is not informative.")
 
 
 def build_tables() -> Dict[str, pd.DataFrame]:
@@ -54,13 +56,16 @@ def build_tables() -> Dict[str, pd.DataFrame]:
     for spec in SPECS:
         rows = []
         for name in REPORT_ROWS:
-            cell = oc.PUBLISHED_ESTIMATION[spec].get(name)
+            cell = oc.ESTIMATION[spec].get(name)
             if cell is None:
                 rows.append({"parameter": name, "estimate": np.nan,
                              "std_error": np.nan, "t_stat": np.nan})
             else:
+                se_, t_ = cell[1], cell[2]
+                if not se_ > 1e-6:      # parameter on a bound: standard error not informative
+                    se_, t_ = np.nan, np.nan
                 rows.append({"parameter": name, "estimate": cell[0],
-                             "std_error": cell[1], "t_stat": cell[2]})
+                             "std_error": se_, "t_stat": t_})
         out[spec] = pd.DataFrame(rows)
     return out
 
@@ -124,7 +129,7 @@ def main() -> None:
         t.insert(0, "spec", spec)
         long_rows.append(t)
     combined = pd.concat(long_rows, ignore_index=True)
-    csv_path = os.path.join(outdir, "estimation_published.csv")
+    csv_path = os.path.join(outdir, "estimation_table.csv")
     combined.to_csv(csv_path, index=False)
 
     tex_path = os.path.join(outdir, "table_ovx_estimation.tex")

@@ -1,17 +1,17 @@
 {
   "target": "online_supplement3.tex :: fig:bubble_forecast_component1 (figures/InSForeprob2020Obs1AllRisk.pdf)",
   "data_file": "data/OVX_History.csv",
-  "T": 518,
-  "sample_note": "T = 518, 2015-05-31 to 2025-04-27.",
+  "T": 522,
+  "sample_note": "T = 522, 2015-05-31 to 2025-05-25.",
   "component": 1,
-  "psi": 0.7989,
-  "alpha": 1.4686,
-  "k0": 3,
-  "k0_mode": "published",
+  "psi": 0.7713687994338239,
+  "alpha": 1.473720807908526,
+  "k0": 10,
+  "k0_mode": "kfinder",
   "cutoff": "2020-01-05",
   "cutoff_index": 240,
-  "anchor_mode": "estimated",
-  "anchor_value": 11.271398,
+  "anchor_mode": "measured",
+  "anchor_value": 11.271148852931592,
   "m": 20,
   "horizon": 20,
   "vartheta": 1,
@@ -22,13 +22,13 @@
   ],
   "crash_horizons": {
     "0.9": 7,
-    "0.95": 10,
-    "0.99": 14
+    "0.95": 8,
+    "0.99": 13
   },
-  "python_version": "3.13.14 (v3.13.14:fd17997c386, Jun 10 2026, 08:55:00) [Clang 21.0.0 (clang-2100.1.1.101)]",
+  "python_version": "3.14.7 (v3.14.7:823f0323ee6, Aug  5 2026, 07:07:01) [Clang 21.0.0 (clang-2100.1.1.101)]",
   "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
-  "numpy_version": "2.5.0",
-  "scipy_version": "1.18.0",
-  "pandas_version": "3.0.3",
-  "timestamp": "2026-09-04 16:55:34"
+  "numpy_version": "2.5.4",
+  "scipy_version": "1.18.1",
+  "pandas_version": "3.1.1",
+  "timestamp": "2026-11-12 16:47:02"
 }

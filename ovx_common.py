@@ -8,17 +8,17 @@ This module produces no output on its own. It collects what the five
 
   1. loading and pre-processing the OVX index (Section
      \ref{app:ovx_estimation});
-  2. the published point estimates and filtering/forecasting settings, read
-     off `Latex/figures/OVXResults.xlsx`;
+  2. the estimates (`ovx_estimation/estimation.csv`) and the
+     filtering/forecasting settings;
   3. a port of the pattern-matching machinery from `stablemar.py`
      (`kfinder`, `foreprob`), restricted to the MAR(0,1) case used by
      Algorithm \ref{alg:pattern_matching}.
 
 Notes on the data
 --------------------------------------------------------------------------
-`data/OVX_History.csv` covers weekly OVX levels through 2025-04-25. After
-weekly resampling the usable sample is 2015-05-31 to 2025-04-27
-(T = 518).
+`data/OVX_History.csv` covers daily OVX levels through 2025-05-23. After
+weekly resampling the sample is 2015-05-31 to 2025-05-25 (T = 522), the
+sample on which the models are estimated.
 
 Identification of k0
 --------------------------------------------------------------------------
@@ -27,8 +27,8 @@ theoretical pattern psi^(k-i), i = 0..m-1. This pattern equals
 psi^k * psi^(-i): the factor psi^k is constant in i and cancels under
 normalization, so the matching distance is independent of k, and the argmin
 is decided only by floating-point noise. k0 is therefore not identified by
-this criterion; the published values (K0_PUBLISHED) are used throughout.
-This has no effect on the forecast trajectory or the crash horizon h*, since
+this criterion; the value returned by `kfinder` (identical to `StableMAR.kfinder`
+of the application) is used throughout. This has no effect on the forecast trajectory or the crash horizon h*, since
 the historical pattern is renormalized on |X_{t0}| (which also cancels
 psi^{k0}). Its only visible effect is which of the first k0 - 1 crash
 probabilities are masked ("--") in Table \ref{tab:bubble_forecast}.
@@ -104,43 +104,33 @@ def sample_note(df: pd.DataFrame) -> str:
 
 
 # =============================================================================
-# 2. Published point estimates and run settings
+# 2. Estimates and run settings
 # =============================================================================
 #
-# Source: Latex/figures/OVXResults.xlsx, sheet "Feuil1", which archives the
-# output of the `stablemixture_app.py` session that produced Table
-# \ref{tab:ovx_estimation}, Table \ref{tab:bubble_forecast}, and the
-# accompanying figures. Columns used here are Estimate / Std. / t-stat.
+# The point estimates and standard errors of Table \ref{tab:ovx_estimation} are
+# those written by `ovx_estimation/run_ovx_estimation.py` (two-step minimum
+# distance estimator of the original project code) to
+# `ovx_estimation/estimation.csv`: Estimate / Std. / t-stat for each of the
+# three specifications.
 
-PUBLISHED_ESTIMATION: Dict[str, Dict[str, Optional[Tuple[float, float, float]]]] = {
-    "gas": {
-        "rho_1": (0.7989, 0.0673, 11.862),
-        "rho_2": (0.8470, 0.0668, 12.678),
-        "alpha": (1.4686, 0.0995, 14.764),
-        "beta": (-0.1275, 0.0684, -1.863),
-        "sigma": (2.0932, 0.2400, 8.723),
-        "pi_1": (0.2790, 0.0403, 6.930),
-        "pi_2": (0.7210, 0.0409, 17.622),
-    },
-    "sas": {
-        "rho_1": (0.2507, 0.0077, 32.477),
-        "rho_2": (0.9865, 0.0040, 244.560),
-        "alpha": (1.2405, 0.0084, 147.613),
-        "beta": None,
-        "sigma": (0.8964, 0.0212, 42.226),
-        "pi_1": (0.8915, 0.0052, 171.084),
-        "pi_2": (0.1085, 0.0182, 5.957),
-    },
-    "s1s": {
-        "rho_1": (0.9226, 0.0082, 112.824),
-        "rho_2": (0.9346, 0.0074, 126.404),
-        "alpha": None,
-        "beta": None,
-        "sigma": (0.1966, 0.0294, 6.692),
-        "pi_1": (0.5029, 0.0511, 9.833),
-        "pi_2": (0.4971, 0.0545, 9.121),
-    },
-}
+ESTIMATION_CSV = os.path.join(HERE, "ovx_estimation", "estimation.csv")
+
+
+def _load_estimation() -> Dict[str, Dict[str, Optional[Tuple[float, float, float]]]]:
+    if not os.path.exists(ESTIMATION_CSV):
+        raise FileNotFoundError(
+            f"{ESTIMATION_CSV} not found: run `cd ovx_estimation && python run_ovx_estimation.py`.")
+    df = pd.read_csv(ESTIMATION_CSV)
+    out: Dict[str, Dict[str, Optional[Tuple[float, float, float]]]] = {}
+    for spec, g in df.groupby("spec"):
+        out[spec] = {}
+        for _, r in g.iterrows():
+            out[spec][r["parameter"]] = (None if pd.isna(r["estimate"]) else
+                                         (float(r["estimate"]), float(r["std_error"]), float(r["t_stat"])))
+    return out
+
+
+ESTIMATION = _load_estimation()
 
 SPEC_LABELS = {
     "gas": r"$\mathcal{G}\alpha\mathcal{S}$",
@@ -152,9 +142,9 @@ SPEC_LABELS = {
 MAIN_SPEC = "gas"
 
 
-def published_params(spec: str = MAIN_SPEC) -> Dict[str, float]:
+def estimated_params(spec: str = MAIN_SPEC) -> Dict[str, float]:
     """Point estimates for `spec`, augmented with the varsigma_j scales."""
-    tbl = PUBLISHED_ESTIMATION[spec]
+    tbl = ESTIMATION[spec]
     out = {k: v[0] for k, v in tbl.items() if v is not None}
     out.setdefault("alpha", 1.0)      # S1S: alpha = 1 imposed
     out.setdefault("beta", 0.0)       # SaS / S1S: beta = 0 imposed
@@ -178,15 +168,6 @@ FORECAST_H = 20            # forecast horizon
 FORECAST_VARTHETA = 1      # positive bubble
 FORECAST_KMAX = 20
 THRESHOLDS = (0.90, 0.95, 0.99)
-
-# Component-wise k0 used throughout (see the module docstring on
-# identification).
-K0_PUBLISHED = {1: 3, 2: 1}
-
-# Level of the detrended series at the forecast cut-off (2020-01-05),
-# consistent with the full announced sample; used to anchor the
-# pattern-matching trajectory.
-ANCHOR_PUBLISHED = 11.271398
 
 
 # =============================================================================

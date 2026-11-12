@@ -229,7 +229,7 @@ def main() -> None:
         if n == first:
             notes = (
                 "All results are in the reparameterized space "
-                r"$(\rho_1, \rho_2, \sigma, \pi_1, \alpha)$.  The full-sample "
+                r"$(\psi_1, \psi_2, \sigma, \pi_1, \alpha)$.  The full-sample "
                 r"estimator $\hat{\vartheta}_n$ and every block estimator "
                 r"$\hat{\vartheta}^{(i)}_b$ are the same functional: identical "
                 "criterion, grid, starting values, bounds and optimizer tolerances, "

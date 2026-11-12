@@ -1,0 +1,19 @@
+{
+  "T": 500,
+  "psi": [
+    0.9,
+    0.7
+  ],
+  "pi": [
+    0.4,
+    0.6
+  ],
+  "alpha": 1.5,
+  "beta": 0.0,
+  "sigma": 1.0,
+  "seed": 42,
+  "target": "main paper :: fig:contagg (figures/discretestableagg.pdf)",
+  "python_version": "3.14.7",
+  "numpy_version": "2.5.3",
+  "scipy_version": "1.18.1"
+}

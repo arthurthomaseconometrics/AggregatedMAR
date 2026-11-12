@@ -719,6 +719,7 @@ class _EngineReparam:
         fig.suptitle(
             f"Diagnostics (reparam) n={agg['n']}, b={agg['b']}, M={agg['M']}, κ={agg['kappa']}",
             fontsize=13)
+        labels = {'rho_1': 'ψ₁', 'rho_2': 'ψ₂', 'sigma': 'σ', 'pi_1': 'π₁', 'alpha': 'α'}
         for i, p in enumerate(ps):
             z = np.array(agg['pooled_no'][p])
             z = z[np.isfinite(z)]
@@ -729,14 +730,14 @@ class _EngineReparam:
             xr = np.linspace(zs.min(), zs.max(), 200)
             ax[i, 0].hist(zs, bins=40, density=True, alpha=.7, edgecolor='k')
             ax[i, 0].plot(xr, stats.norm.pdf(xr), 'r-', lw=2)
-            ax[i, 0].set_title(f'{p}: Hist')
+            ax[i, 0].set_title(f'{labels.get(p, p)}: Hist')
             stats.probplot(zs, dist='norm', plot=ax[i, 1])
-            ax[i, 1].set_title(f'{p}: QQ')
+            ax[i, 1].set_title(f'{labels.get(p, p)}: QQ')
             from scipy.stats import gaussian_kde
             kde = gaussian_kde(zs)
             ax[i, 2].plot(xr, kde(xr), 'b-', lw=2, label='KDE')
             ax[i, 2].plot(xr, stats.norm.pdf(xr), 'r--', lw=2, label='N(0,1)')
-            ax[i, 2].set_title(f'{p}: KDE')
+            ax[i, 2].set_title(f'{labels.get(p, p)}: KDE')
             ax[i, 2].legend()
             for j in range(3):
                 ax[i, j].grid(True, alpha=.3)
