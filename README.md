@@ -1,5 +1,6 @@
 # Replication package
 
+
 de Truchis, G., Fries, S., and Thomas, A. (2026). *Estimation and prediction of bubbles
 with α-stable aggregates of moving averages*, and its Online Supplement.
 
