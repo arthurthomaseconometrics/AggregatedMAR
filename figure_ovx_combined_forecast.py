@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 r"""
-Figure \ref{fig:combined_forecasts} of main_v23.tex -- "Combined in-sample
-forecast at the 99% risk threshold for the 2020 OVX bubble"
-(figure `figures/InSCombinedForecast.png`).
+Figure 2 of de Truchis, Fries and Thomas (2026): combined in-sample forecast at the 99% risk threshold
+for the 2020 OVX bubble.
 
 Single panel, full sample: the detrended series in blue, the matched
 historical theoretical pattern in green from the dashed black vertical
@@ -99,7 +98,7 @@ def main() -> None:
     anchor = None      # |X_t0| measured on the series, as in the application
 
     print("=" * 72)
-    print("Figure \\ref{fig:combined_forecasts} (main_v23.tex) -- "
+    print("Figure 2 -- "
           "OVX combined forecast")
     print("=" * 72)
     print(f"  sample: {oc.sample_note(df)}")
@@ -164,8 +163,7 @@ def main() -> None:
     plt.close(fig)
 
     oc.write_run_config(outdir, {
-        "target": "main_v23.tex :: fig:combined_forecasts "
-                  "(figures/InSCombinedForecast.png)",
+        "target": "Paper, Figure 2",
         "data_file": os.path.relpath(args.data, oc.HERE),
         "T": int(len(df)),
         "sample_note": oc.sample_note(df),

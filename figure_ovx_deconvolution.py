@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 r"""
-Figure \ref{fig:ovx_deconv} -- "Deconvolution of the OVX index from the
-G-alpha-S two-component model", Section \ref{app:ovx_filtration} of
-online_supplement3.tex (figure `figures/OVXDeconv48.pdf`).
+Figure S.6 of the Online Supplement of de Truchis, Fries and Thomas (2026): deconvolution of the OVX index
+from the G-alpha-S two-component model (Section S.5.2).
 
 Three stacked panels: the observed detrended OVX series, followed by the two
-latent components filtered with the dual MCMC procedure of \cite{dtv25}
+latent components filtered with the dual MCMC procedure of de Truchis, Thomas and Vaudree (2026)
 (`stablemixture.StableMixtureDeconvolution.mcmc_filter`).
 
 Outputs (results_ovx_deconvolution/)
@@ -18,11 +17,8 @@ Outputs (results_ovx_deconvolution/)
 
 Filter settings
 --------------------------------------------------------------------------
-Read off Latex/figures/OVXResults.xlsx ("Filtration tuning parameters"
-column): 1000 particles, MCMC window of 5, seed 11, under the G-alpha-S
-specification. These are the script's defaults (`ovx_common.FILTER_SETTINGS`).
-The filter is applied to the estimates of Table \ref{tab:ovx_estimation}
-(G-alpha-S specification).
+1000 particles, MCMC window of 5, seed 11 (`ovx_common.FILTER_SETTINGS`), applied
+to the G-alpha-S estimates of Table S.14.
 
 Reproducibility
 --------------------------------------------------------------------------
@@ -102,7 +98,7 @@ def make_figure(df: pd.DataFrame, X: list, params: dict) -> plt.Figure:
 def diagnostics(df: pd.DataFrame, X: list) -> pd.DataFrame:
     """Deconvolution quality checks.
 
-    `residual` is Y - sum_j X_j: the filtering procedure of \\cite{dtv25}
+    `residual` is Y - sum_j X_j: the filtering procedure of de Truchis, Thomas and Vaudree (2026)
     does not constrain this sum to equal Y exactly, so the residual is a
     diagnostic to report, not an error.
     """
@@ -146,7 +142,7 @@ def main() -> None:
     y = df["detrended"].to_numpy()
 
     print("=" * 72)
-    print("Figure \\ref{fig:ovx_deconv} -- OVX deconvolution")
+    print("Figure S.6 -- OVX deconvolution")
     print("=" * 72)
     print(f"  sample: {oc.sample_note(df)}")
 
@@ -186,8 +182,7 @@ def main() -> None:
     plt.close(fig)
 
     oc.write_run_config(outdir, {
-        "target": "online_supplement3.tex :: fig:ovx_deconv "
-                  "(figures/OVXDeconv48.pdf)",
+        "target": "Online Supplement, Figure S.6",
         "data_file": os.path.relpath(args.data, oc.HERE),
         "T": int(len(df)),
         "sample_note": oc.sample_note(df),

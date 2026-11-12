@@ -1,5 +1,5 @@
 {
-  "target": "online_supplement3.tex :: fig:bubble_forecast_component2 (figures/InSForeprob2020Obs2AllRisk.pdf)",
+  "target": "Online Supplement, Figure S.8",
   "data_file": "data/OVX_History.csv",
   "T": 522,
   "sample_note": "T = 522, 2015-05-31 to 2025-05-25.",

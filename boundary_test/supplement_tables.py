@@ -1,4 +1,5 @@
-"""Extra tables for Section S.4 of the Online Supplement, from results/replications.csv.
+"""Tables S.12-S.13 of the Online Supplement of de Truchis, Fries and Thomas (2026),
+Section S.4, built from results/replications.csv.
 
 Writes results/tab_supp_cv.tex (bootstrap critical values, power of the asymptotic test)
 and results/tab_supp_diag.tex (behaviour of the estimator and numerical diagnostics).

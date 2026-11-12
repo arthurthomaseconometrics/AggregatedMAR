@@ -1,10 +1,11 @@
-"""Monte Carlo for the boundary test of H0: min_j psi_j = 0 (section_boundary_test).
+"""Tables S.10-S.11 of the Online Supplement of de Truchis, Fries and Thomas (2026),
+Section S.4: Monte Carlo study of the test of H0: min_j psi_j = 0.
 
-DGP: Case 1 of main_v24 with J = 2 and beta = 0 (symmetric alpha-stable),
+DGP: Case 1 of the paper with J = 2 and beta = 0 (symmetric alpha-stable),
     X_t = varsigma_1 X_{1,t} + varsigma_2 X_{2,t},  X_{j,t} = psi_j X_{j,t+1} + eps_{j,t},
 with eps_{j,t} i.i.d. S(alpha, 0, 1, 0).  psi_j = 0 makes X_{j,t} = eps_{j,t}.
 
-Estimator: criterion (2.14) of main_v24 evaluated with the paper's quadrature
+Estimator: criterion (2.14) of the paper evaluated with the paper's quadrature
 (15 x 15 grid on [-1.5, 1.5]^2, weight (kappa/pi) exp(-kappa(u^2 + v^2)) du dv,
 kappa = 1, as in cf_weights.quadrature_weights), minimised over the extended
 space psi_j in [0, PSI_MAX].  The labels are sorted afterwards so that

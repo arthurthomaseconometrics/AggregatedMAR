@@ -1,31 +1,22 @@
 #!/usr/bin/env python3
-r"""
-Estimation of the OVX models of Table S.14 (Online Supplement, S.5.1).
-
-Estimator: StableMixtureDeconvolution.estimate of the original project code
-(`stablemixture.py`, copied unchanged), called as in the interactive application
-`stablemixture_app.py` (step1=False): HAC "optimal" weights (Bartlett kernel) are
-computed once, at the initial guess, on a 15 x 15 grid, then the weighted criterion is
-minimised by L-BFGS-B.  This is a single pass, not a fixed point: re-estimating with
-weights recomputed at the solution drifts to the bounds of the parameter space.
-Hessian standard errors from .inference().
+r"""Table S.14 of the Online Supplement of de Truchis, Fries and Thomas (2026):
+estimation of the OVX models (GaS, SaS, S1S).
 
 Data: ../data/OVX_History.csv, window 2015-05-23 .. 2025-05-23, weekly mean, linear
-detrend, centred, rescaled so that max|Y| = 10 (pipeline of `stablemixture_app.py`):
-T = 522.
+detrend, centred, rescaled so that max|Y| = 10: T = 522.
 
-Initial guesses
-  GaS : the one archived in Latex/figures/OVXResults.xlsx ("init from reg").
-  SaS, S1S : sequential (NLS) initial guess of the current `stable_aggregates.py`
-            (no initial guess is archived for these two specifications).
-
-The components are ordered psi_1 < psi_2.
+Estimator: StableMixtureDeconvolution.estimate (stablemixture.py of this folder) with
+step1=False: HAC weights (Bartlett kernel) are computed at the initial guess on a
+15 x 15 grid, then the weighted criterion is minimised by L-BFGS-B.  Hessian standard
+errors from .inference().  Initial guesses: INIT_GAS below for GaS; the sequential
+(NLS) estimates of stable_aggregates.py for SaS and S1S.  Components are ordered
+psi_1 < psi_2.
 
 Usage:  cd ovx_estimation && python run_ovx_estimation.py     (~1 min)
-Output: estimation.csv   (spec, parameter, estimate, std_error, t_stat)
+Output: estimation.csv   (spec, parameter, estimate, std_error, t_stat), read by
+                         ../ovx_common.py for Table S.14, Figure S.6, Table S.15 and
+                         Figures 2, S.7-S.8
         run_config.json
-`estimation.csv` is read by ovx_common.py: it feeds Table S.14, the filtering of
-Figure S.6, the forecasts of Table S.15 and Figures 2, S.7-S.8.
 """
 from __future__ import annotations
 
@@ -46,8 +37,8 @@ DATA = os.path.join(HERE, "..", "data", "OVX_History.csv")
 
 SPECS = {"gas": (False, False), "sas": (False, True), "s1s": (True, True)}  # (fix_alpha, fix_beta)
 ROWS = ["rho_1", "rho_2", "alpha", "beta", "sigma", "pi_1", "pi_2"]
-ARCHIVED_INIT_GAS = [0.8947193483793816, 0.99, 0.02967446828050219, 0.01,
-                     1.5313965112981227, 0.3039407542242554]  # rho_1, rho_2, varsigma_1, varsigma_2, alpha, beta (scaled data)
+INIT_GAS = [0.8947193483793816, 0.99, 0.02967446828050219, 0.01,
+                     1.5313965112981227, 0.3039407542242554]  # rho_1, rho_2, varsigma_1, varsigma_2 (scaled data), alpha, beta
 
 
 def load_series():
@@ -87,7 +78,7 @@ def main() -> None:
     print(f"T = {len(Y)}, scale factor {sf:.6f}")
     rows = []
     for spec, (fix_alpha, fix_beta) in SPECS.items():
-        init = ARCHIVED_INIT_GAS if spec == "gas" else sequential_start(Y, spec)
+        init = INIT_GAS if spec == "gas" else sequential_start(Y, spec)
         m = StableMixtureDeconvolution(num_components=2, alpha_value=1.0, beta_value=0.0,
                                        fix_alpha=fix_alpha, fix_beta=fix_beta, verbose=False)
         est = tuple(float(x) for x in m.estimate(Y, initial_guess=list(init),

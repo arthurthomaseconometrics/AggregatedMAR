@@ -1,5 +1,5 @@
 {
-  "target": "online_supplement3.tex :: tab:bubble_forecast",
+  "target": "Online Supplement, Table S.15",
   "data_file": "data/OVX_History.csv",
   "T": 522,
   "sample_note": "T = 522, 2015-05-31 to 2025-05-25.",

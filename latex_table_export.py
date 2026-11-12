@@ -1,17 +1,7 @@
-r"""
-Formateurs LaTeX partages pour les quatre exports de la Section S.2 du
-supplement (online_supplement3.tex) : reparam non restreint, test de
-critere, restreint pi_1=1/2, restreint pi_1=0.4375 (valeur vraie).
-
-Ce module ne fait AUCUN calcul MDE/subsampling -- il ne fait que mettre en
-forme les DataFrames deja produits par les moteurs de subsampling_reparam.py,
-subsampling_restricted.py, subsampling_restricted_truepi.py et
-criterion_difference_test.py, en respectant EXACTEMENT le format des
-tableaux actuellement dans online_supplement3.tex (memes en-tetes, meme
-ordre de colonnes Quantile CI / Normal CI, memes notes).
-
-Chaque script d'export (export_s2*_*.py) appelle ces fonctions et ecrit un
-seul fichier .tex par section, pret a etre colle dans online_supplement3.tex.
+r"""LaTeX formatting of the subsampling tables of the Online Supplement of de Truchis,
+Fries and Thomas (2026), Section S.3 (Tables S.3-S.9, figure environments of
+Figures S.1-S.5).  No computation: it formats the DataFrames produced by
+subsampling_reparam.py; called by export_s22_reparam.py.
 """
 
 from __future__ import annotations
@@ -21,11 +11,7 @@ from typing import Dict, List, Optional, Sequence
 import numpy as np
 import pandas as pd
 
-# Symboles des parametres tels qu'utilises dans online_supplement3.tex.
-# Les tableaux DETAILLES (un par n) utilisent rho_1/rho_2 ; les tableaux
-# RESUME (en tete de section S.2) utilisent psi_1/psi_2 -- c'est deja
-# l'incoherence de notation presente dans le document actuel, on la
-# reproduit telle quelle plutot que de la "corriger" sans qu'on le demande.
+# Parameter symbols used in the tables.
 DETAIL_SYMBOL = {
     "rho_1": r"$\psi_1$", "rho_2": r"$\psi_2$",
     "sigma": r"$\sigma$", "pi_1": r"$\pi_1$", "alpha": r"$\alpha$",
@@ -68,17 +54,12 @@ def format_detail_table(df: pd.DataFrame, n: int, b: int, M: int,
     df : DataFrame produit par Engine.table(agg) -- colonnes Parameter, True,
          Avg Est., Std Est., Dev.Mean, Dev.Std, Ratio, Skew, Kurt, SW Rej.,
          JB Rej., qCov90, nCov90, qCov95, nCov95 (ordre natif de l'engine).
-         Si `Skew.Trim`/`Outlier%` sont presentes (audit 2026-09-03,
-         subsampling_reparam.robust_shape_stats), deux colonnes robustes sont
-         inserees apres Kurt : Skew tronquee (valide sous troncature
-         symetrique) et fraction de points extremes standardises par
-         mediane/MAD -- PAS un "Kurt tronque", structurellement biase vers des
-         valeurs negatives par la troncature elle-meme (verifie sur donnees
-         gaussiennes propres).
+         If `Skew.Trim`/`Outlier%` are present (subsampling_reparam.robust_shape_stats),
+         two robust columns are inserted after Kurt: trimmed skewness and the share of
+         extreme standardized points (median/MAD).
 
-    Reproduit exactement la mise en page de online_supplement3.tex : colonne
-    Ratio supprimee (absente du document publie), colonnes de couverture
-    regroupees Quantile CI (qCov90, qCov95) puis Normal CI (nCov90, nCov95).
+    Layout of the detail tables: the Ratio column is dropped; coverage columns are
+    grouped as Quantile CI (qCov90, qCov95) then Normal CI (nCov90, nCov95).
     """
     has_robust = "Skew.Trim" in df.columns and "Outlier%" in df.columns
     ncols = 16 if has_robust else 14

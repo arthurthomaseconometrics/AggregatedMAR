@@ -1,5 +1,5 @@
 {
-  "section": "S.2.2 (app:subsampling_reparam)",
+  "section": "Online Supplement, Section S.3.2",
   "sample_sizes": [
     500000
   ],
@@ -23,14 +23,6 @@
   "mde_gtol": 1e-12,
   "mde_ftol": 1e-16,
   "mde_maxiter": 2000,
-  "audit_fixes": [
-    "explicit L-BFGS-B gtol/ftol (cf_weights.MDE_GTOL)",
-    "single MDE functional for full sample and blocks (Politis-Romano)",
-    "Assumption C1 ordering enforced (subsampling_reparam.canonical_order)",
-    "burn-in kept on the correct side of the backward recursion",
-    "independent per-component seed streams",
-    "pooled non-overlapping deviations for Dev.Mean/Std/Skew/Kurt"
-  ],
   "python_version": "3.13.13 (main, Aug 17 2026, 02:38:26) [GCC 13.3.0]",
   "platform": "Linux-6.12.86+deb13-amd64-x86_64-with-glibc2.39",
   "numpy_version": "2.5.2",

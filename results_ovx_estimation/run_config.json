@@ -1,5 +1,5 @@
 {
-  "target": "online_supplement3.tex :: tab:ovx_estimation",
+  "target": "Online Supplement, Table S.14",
   "data_file": "data/OVX_History.csv",
   "sample_start": "2015-05-23",
   "sample_end": "2025-05-23",

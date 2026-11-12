@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 r"""
-Table \ref{tab:ovx_estimation} -- "Estimation results for the OVX index under
-three specifications", Section \ref{app:ovx_estimation} of
-online_supplement3.tex.
+Table S.14 of the Online Supplement of de Truchis, Fries and Thomas (2026): estimation results for the OVX
+index under three specifications (GaS, SaS, S1S).
 
 Formats the estimates of ovx_estimation/estimation.csv into the booktabs table used in the
 supplement.
@@ -51,7 +50,7 @@ TABLE_NOTE = (
 
 
 def build_tables() -> Dict[str, pd.DataFrame]:
-    """Point estimates for each specification, in Table \\ref{tab:ovx_estimation} row order."""
+    """Point estimates for each specification, in Table S.14 row order."""
     out = {}
     for spec in SPECS:
         rows = []
@@ -71,7 +70,7 @@ def build_tables() -> Dict[str, pd.DataFrame]:
 
 
 def to_tex(tables: Dict[str, pd.DataFrame], note: str) -> str:
-    """Booktabs table matching Table \\ref{tab:ovx_estimation}."""
+    """Booktabs table matching Table S.14."""
     lines = [
         r"\begin{table}[ht]",
         r"\centering",
@@ -114,7 +113,7 @@ def main() -> None:
     note_sample = oc.sample_note(df)
 
     print("=" * 72)
-    print("Table \\ref{tab:ovx_estimation} -- OVX estimation")
+    print("Table S.14 -- OVX estimation")
     print("=" * 72)
     print(f"  sample: {note_sample}")
     print()
@@ -137,7 +136,7 @@ def main() -> None:
         fh.write(to_tex(tables, TABLE_NOTE))
 
     oc.write_run_config(outdir, {
-        "target": "online_supplement3.tex :: tab:ovx_estimation",
+        "target": "Online Supplement, Table S.14",
         "data_file": os.path.relpath(oc.DEFAULT_DATA, oc.HERE),
         "sample_start": oc.SAMPLE_START, "sample_end": oc.SAMPLE_END,
         "resample_rule": oc.RESAMPLE_RULE, "resample_how": oc.RESAMPLE_HOW,

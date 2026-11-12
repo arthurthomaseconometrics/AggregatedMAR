@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 r"""
-Figure 1 of the paper (\label{fig:contagg}, figures/discretestableagg.pdf):
-"Simulated stable aggregate dynamics with two components".
+Figure 1 of de Truchis, Fries and Thomas (2026): simulated stable aggregate
+dynamics with two components.
 
 Two purely anticipative alpha-stable AR(1) components,
     X_{j,t} = psi_j X_{j,t+1} + eps_{j,t},   eps_{j,t} ~iid S(alpha, beta, 1, 0),
@@ -12,10 +12,7 @@ Panels: top left, the weights pi_j of the two components; top right, the
 aggregate calX_t; bottom, the contribution sigma * pi_j * X_{j,t} of each latent
 component (the two bottom panels add up to the top-right one).
 
-The figure is illustrative.  The script that produced the published PDF was
-not archived; this one reproduces its design (parameters, layout, T = 500),
-but the simulated path depends on the random draw, so the series will not be
-identical to the published one.
+The figure uses seed 42 by default.
 
 Usage
 -----
@@ -102,7 +99,7 @@ def main() -> None:
     os.makedirs(OUTDIR, exist_ok=True)
     fig.savefig(os.path.join(OUTDIR, "discretestableagg.pdf"), bbox_inches="tight")
     fig.savefig(os.path.join(OUTDIR, "discretestableagg.png"), dpi=150, bbox_inches="tight")
-    cfg = dict(vars(args), target="main paper :: fig:contagg (figures/discretestableagg.pdf)",
+    cfg = dict(vars(args), target="Paper, Figure 1",
                python_version=platform.python_version(), numpy_version=np.__version__,
                scipy_version=scipy.__version__)
     with open(os.path.join(OUTDIR, "run_config.json"), "w") as f:

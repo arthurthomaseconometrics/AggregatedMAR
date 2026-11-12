@@ -1,66 +1,22 @@
 #!/usr/bin/env python3
-r"""
-Table S.2 -- "Monte Carlo estimation accuracy for mixed causal-noncausal
-MAR(1,1) aggregates", the Case-2 analogue of Table S.1
-(\label{app:mc_accuracy} / \label{tab:mc_accuracy_full}) of the Online
-Supplement, consistent with Section 2.4 ("Case 2: Aggregation of Mixed
-Causal-Noncausal MAR(1,1) Processes") of main_v23.tex.
+r"""Table S.2 of the Online Supplement of de Truchis, Fries and Thomas (2026):
+Monte Carlo estimation accuracy, Case 2 (aggregate of two mixed causal-noncausal
+MAR(1,1) components).
 
-Data-generating process (eq. around \label{eq:aggcf_mar11_skewed} of
-main_v23.tex)
-----------------------------------------------------------------------
-Each latent component is a mixed causal-noncausal MAR(1,1) process,
-
-    (1 - phi_j L)(1 - psi_j L^{-1}) X_{j,t} = eps_{j,t},   |phi_j|, |psi_j| < 1,
-
-with MA(infinity) coefficients d_{j,k} = psi_j^k/(1-phi_j psi_j) for k >= 0
-and d_{j,k} = phi_j^{|k|}/(1-phi_j psi_j) for k < 0, so that X_{j,t} mixes a
-causal (backward-looking, root phi_j) and a noncausal (forward-looking,
-root psi_j) branch.  The observed aggregate is Y_t = sum_j varsigma_j
-X_{j,t} (unit-scale eps_{j,t} ~iid S(alpha, beta, 1, 0); varsigma_j carries
-the scale, exactly as in Case 1 / Table S.1).  Following the paper's
-simplifying restriction for beta != 0 (main_v23.tex, Section 2.4), every
-phi_j, psi_j is kept strictly positive.
-
-theta = (psi_1, phi_1, varsigma_1, psi_2, phi_2, varsigma_2 [, alpha] [, beta]),
-of dimension p = 3J+2 = 8 for J = 2 (2 more than Case 1's p = 3J+1 = 7,
-i.e. Table S.1's 4-6 free parameters), the extra coordinate per component
-being the causal root phi_j.
-
-Design choice (no MAR(1,1) design is specified in Section 4.1 of
-main_v23.tex, which only covers Case 1): to isolate the effect of adding
-causal dynamics, this script reuses EXACTLY the Table S.1 latent design
-(psi_1, psi_2, varsigma_1, varsigma_2) = (0.8, 0.3, 0.7, 0.9) and the same
-three distributional panels (Cauchy / SaS / GaS), and adds causal roots
-(phi_1, phi_2) = (0.3, 0.5), a moderate, well-separated pair also used
-elsewhere in this repository's MAR(1,1) exploratory code
-(monte_carlo_mar11_study.py).
-
-Weighting: Assumption C2 of main_v23.tex / criterion (2.14)
-----------------------------------------------------------------------
-As for Table S.1 (table_s1_mc_accuracy.py), estimation minimizes the
-discretized version of criterion (2.14),
-
-    Q_n(theta) = \iint |phi_n(u,v) - phi(u,v;theta)|^2 w(u,v) du dv,
-
-with the Assumption C2 weight w(u,v) = (kappa/pi) exp(-kappa(u^2+v^2)),
-using the SAME quadrature module `cf_weights.py` (imported from the parent
-directory) as Table S.1 and `run_supplement_rerun.py`, so the two tables
-of the (extended) supplement are estimated under one consistent criterion.
-`--uniform-weights` reverts to the legacy uniform-weight criterion.
-
-Reproducibility
-----------------------------------------------------------------------
-Deterministic per-replication seeding, `run_config.json` with every
-setting and package version, raw per-replication CSVs, a combined summary
-CSV, and a booktabs LaTeX table formatted like Table S.1.
+Each component solves (1 - phi_j L)(1 - psi_j L^{-1}) X_{j,t} = eps_{j,t}; the
+aggregate is Y_t = sum_j varsigma_j X_{j,t}.  Design: psi = (0.8, 0.3),
+phi = (0.3, 0.5), varsigma = (0.7, 0.9); T = 250, 500, 1000; 1,000 replications;
+10 starting values; MA(infinity) expansion truncated at |k| <= 250; same three
+panels (Cauchy, SaS, GaS) and same criterion as Table S.1 (Assumption C2 weight,
+kappa = 1, 15 x 15 grid on [-1.5, 1.5]^2).
 
 Usage
-----------------------------------------------------------------------
-    python table_s2_mc_accuracy.py                    # full paper-style design (slow)
-    python table_s2_mc_accuracy.py --quick             # fast smoke test
-    python table_s2_mc_accuracy.py --n-jobs 8 --seed 42
-    python table_s2_mc_accuracy.py --uniform-weights   # legacy criterion
+    python table_s2_mc_accuracy.py --n-jobs 16          # see README for the run time
+    python table_s2_mc_accuracy.py --quick              # smoke test, seconds
+    python table_s2_mc_accuracy.py --uniform-weights    # uniform weights instead of C2
+
+Output (results_table_s2/): table_s2_mc_accuracy.tex, mc_summary.csv,
+mc_raw_<panel>.csv, run_config.json.
 """
 
 from __future__ import annotations
@@ -99,7 +55,7 @@ TRUE_PHI = (0.3, 0.5)               # causal roots (new to Case 2)
 TRUE_VARSIGMA = (0.7, 0.9)          # combined scales, same as Table S.1
 J = 2
 
-ROOT_BOUNDS = (0.02, 0.97)          # phi_j, psi_j > 0 (main_v23.tex Sec. 2.4 restriction)
+ROOT_BOUNDS = (0.02, 0.97)          # phi_j, psi_j > 0 (restriction of Case 2 when beta != 0)
 VARSIGMA_BOUNDS = (0.02, 5.0)
 BETA_BOUNDS = (-0.97, 0.97)
 
@@ -189,7 +145,7 @@ def _component_log_cf(U: np.ndarray, V: np.ndarray, psi: float, phi: float,
                        varsigma: float, alpha: float, beta: float) -> np.ndarray:
     """
     log E[exp(i(u X_t + v X_{t+1}))] for a SCALED Case-2 component,
-    implementing eq. (aggcf_mar11_skewed) of main_v23.tex:
+    implementing the Case 2 characteristic function of the paper:
 
         log phi_{X_j}(u,v) = -[varsigma^alpha / |1-phi*psi|^alpha]
                                * (C_j(u,v) + A_j(u,v)),
@@ -398,7 +354,7 @@ def compute_summary(df: pd.DataFrame, spec: PanelSpec) -> pd.DataFrame:
 
 
 # =============================================================================
-# LaTeX table (format matches Table S.1 of online_supplement2.tex)
+# LaTeX table (format of Table S.2)
 # =============================================================================
 
 _SYMBOL = {
@@ -464,7 +420,7 @@ def format_table_s2(summaries: Dict[str, pd.DataFrame], sample_sizes: Sequence[i
     lines.append(r"\end{tabular}")
     lines.append(r"\begin{flushleft}")
     weight_txt = (
-        r"uniform weights on a bounded grid (legacy criterion)" if kappa is None else
+        r"uniform weights on a bounded grid" if kappa is None else
         rf"the Assumption~C2 weight $w(u,v)=(\kappa/\pi)\exp(-\kappa(u^2+v^2))$ with $\kappa={kappa:g}$"
     )
     lines.append(
@@ -473,7 +429,7 @@ def format_table_s2(summaries: Dict[str, pd.DataFrame], sample_sizes: Sequence[i
         r"$\varsigma_2 = 0.9$ (same latent scale/mixing design as Table~\ref{tab:mc_accuracy_full}, "
         r"extended with causal roots $\phi_1,\phi_2$).  MRE denotes the mean relative "
         r"error $\mathbb{E}[|\hat\theta - \theta_0|/|\theta_0|]$.  Estimation minimizes "
-        f"the discretized criterion (2.14) of main\\_v23.tex using {weight_txt}."
+        f"the discretized criterion (2.14) using {weight_txt}."
     )
     lines.append(r"\end{flushleft}")
     lines.append(r"\end{table}")
@@ -495,7 +451,7 @@ def main() -> None:
     ap.add_argument("--kappa", type=float, default=KAPPA_DEFAULT,
                      help="Assumption C2 weight decay (default: cf_weights.KAPPA_DEFAULT)")
     ap.add_argument("--uniform-weights", action="store_true",
-                     help="legacy mode: uniform weights (kappa=None)")
+                     help="uniform weights (kappa=None) instead of the Assumption C2 weight")
     ap.add_argument("--n-grid", type=int, default=N_GRID_DEFAULT)
     ap.add_argument("--u-max", type=float, default=U_MAX_DEFAULT)
     ap.add_argument("--n-jobs", type=int, default=-1)
@@ -538,9 +494,9 @@ def main() -> None:
         json.dump(config, f, indent=2, default=str)
 
     print("=" * 78)
-    print("  Table S.2 -- MC estimation accuracy, MAR(1,1) aggregates (main_v23 Case 2)")
+    print("  Table S.2 -- MC estimation accuracy, MAR(1,1) aggregates (Case 2)")
     print("=" * 78)
-    print(f"  Weights      : {'uniform (legacy)' if kappa is None else f'Assumption C2, kappa={kappa}'}")
+    print(f"  Weights      : {'uniform' if kappa is None else f'Assumption C2, kappa={kappa}'}")
     print(f"  Grid         : {args.n_grid}x{args.n_grid} on [-{args.u_max}, {args.u_max}]^2")
     print(f"  Sample sizes : {sample_sizes}")
     print(f"  Replications : {n_replications}   |   multi-start: {n_starts}")

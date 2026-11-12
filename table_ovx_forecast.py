@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 r"""
-Table \ref{tab:bubble_forecast} -- "In-sample bubble forecast: predicted
-values and crash/survival probabilities", Section \ref{app:ovx_forecast} of
-online_supplement3.tex.
+Table S.15 of the Online Supplement of de Truchis, Fries and Thomas (2026): in-sample bubble forecast,
+predicted values and crash/survival probabilities (Section S.5.3).
 
-Applies Algorithm \ref{alg:pattern_matching} to both components of the
+Applies the pattern-matching algorithm to both components of the
 G-alpha-S model at the January 2020 cut-off, and tabulates, for each weekly
 horizon h, the predicted value, the crash probability 1 - |psi|^(alpha h),
 and the survival probability |psi|^(alpha h).
@@ -39,7 +38,7 @@ OUTDIR_NAME = "results_ovx_forecast"
 def run_component(x: np.ndarray, t: int, j: int, params: Dict[str, float],
                   k0: int, h: int, threshold: float, m: int, vartheta: int,
                   anchor) -> Dict:
-    """Algorithm \\ref{alg:pattern_matching} for component j."""
+    """the pattern-matching algorithm for component j."""
     psi = params[f"rho_{j}"]
     alpha = params["alpha"]
     df_prob, traj = oc.foreprob(x, k0=k0, h=h, maxp=threshold, t=t, psi=psi,
@@ -51,7 +50,7 @@ def run_component(x: np.ndarray, t: int, j: int, params: Dict[str, float],
 
 def assemble(res1: Dict, res2: Dict, dates: pd.DatetimeIndex, m: int,
              h_show: int) -> pd.DataFrame:
-    """Table \\ref{tab:bubble_forecast}: one row per horizon h = 0..h_show."""
+    """Table S.15: one row per horizon h = 0..h_show."""
     rows = []
     for h in range(0, h_show + 1):
         row = {"date": dates[m + h], "h": h}
@@ -70,7 +69,7 @@ def assemble(res1: Dict, res2: Dict, dates: pd.DatetimeIndex, m: int,
 
 def to_tex(tab: pd.DataFrame, res1: Dict, res2: Dict, threshold: float,
            m: int, h_star: Dict[int, int]) -> str:
-    """Table matching the layout of Table \\ref{tab:bubble_forecast}."""
+    """Table matching the layout of Table S.15."""
     pct = f"{threshold:.0%}".replace("%", r"\%")
     lines = [
         r"\begin{table}[ht]",
@@ -149,7 +148,7 @@ def main() -> None:
               f"{df.index[t]:%Y-%m-%d}")
 
     print("=" * 72)
-    print("Table \\ref{tab:bubble_forecast} -- OVX 2020 in-sample forecast")
+    print("Table S.15 -- OVX 2020 in-sample forecast")
     print("=" * 72)
     print(f"  sample: {oc.sample_note(df)}")
     print(f"  cut-off t_0 = {df.index[t]:%Y-%m-%d} (index {t})")
@@ -202,7 +201,7 @@ def main() -> None:
         fh.write(tex)
 
     oc.write_run_config(outdir, {
-        "target": "online_supplement3.tex :: tab:bubble_forecast",
+        "target": "Online Supplement, Table S.15",
         "data_file": os.path.relpath(args.data, oc.HERE),
         "T": int(len(df)),
         "sample_note": oc.sample_note(df),

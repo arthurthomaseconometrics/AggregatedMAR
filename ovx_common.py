@@ -1,18 +1,17 @@
 r"""
-Shared building blocks for the replication of Section "Application to the OVX
-Index" (\label{app:ovx}) of online_supplement3.tex, and of Figure
-\ref{fig:combined_forecasts} of main_v23.tex.
+Shared building blocks for the OVX illustration of de Truchis, Fries and Thomas (2026): Section 5 and Figure 2 of
+the paper, Section S.5 of the Online Supplement (Tables S.14-S.15, Figures S.6-S.8).
 
 This module produces no output on its own. It collects what the five
 `table_ovx_*.py` / `figure_ovx_*.py` scripts share:
 
   1. loading and pre-processing the OVX index (Section
-     \ref{app:ovx_estimation});
+     Section S.5.1);
   2. the estimates (`ovx_estimation/estimation.csv`) and the
      filtering/forecasting settings;
   3. a port of the pattern-matching machinery from `stablemar.py`
      (`kfinder`, `foreprob`), restricted to the MAR(0,1) case used by
-     Algorithm \ref{alg:pattern_matching}.
+     the pattern-matching algorithm of Section S.5.3.
 
 Notes on the data
 --------------------------------------------------------------------------
@@ -31,7 +30,7 @@ this criterion; the value returned by `kfinder` (identical to `StableMAR.kfinder
 of the application) is used throughout. This has no effect on the forecast trajectory or the crash horizon h*, since
 the historical pattern is renormalized on |X_{t0}| (which also cancels
 psi^{k0}). Its only visible effect is which of the first k0 - 1 crash
-probabilities are masked ("--") in Table \ref{tab:bubble_forecast}.
+probabilities are masked ("--") in Table S.15.
 """
 
 from __future__ import annotations
@@ -50,14 +49,14 @@ DEFAULT_DATA = os.path.join(HERE, "data", "OVX_History.csv")
 
 
 # =============================================================================
-# 1. Data: weekly detrended OVX (Section \ref{app:ovx_estimation})
+# 1. Data: weekly detrended OVX (Section S.5.1)
 # =============================================================================
 
 SAMPLE_START = "2015-05-23"
 SAMPLE_END = "2025-05-23"
-DETREND_ORDER = 1          # linear detrending, Section \ref{app:ovx_estimation}
+DETREND_ORDER = 1          # linear detrending
 RESAMPLE_RULE = "W"        # weekly
-RESAMPLE_HOW = "mean"      # within-week average (aggregate_data in stablemixture_app)
+RESAMPLE_HOW = "mean"      # within-week average
 
 
 def load_ovx(path: str = DEFAULT_DATA,
@@ -68,8 +67,7 @@ def load_ovx(path: str = DEFAULT_DATA,
              detrend_order: int = DETREND_ORDER) -> pd.DataFrame:
     """Load, resample, and detrend the OVX series.
 
-    Mirrors the `load_data -> prepare_data -> aggregate_data -> remove_trend`
-    chain of `stablemixture_app.py`.
+    Window, weekly averaging and linear detrending of Section S.5.1.
 
     Returns:
         DataFrame indexed by date, with columns `ovx` (aggregated level),
@@ -107,7 +105,7 @@ def sample_note(df: pd.DataFrame) -> str:
 # 2. Estimates and run settings
 # =============================================================================
 #
-# The point estimates and standard errors of Table \ref{tab:ovx_estimation} are
+# The point estimates and standard errors of Table S.14 are
 # those written by `ovx_estimation/run_ovx_estimation.py` (two-step minimum
 # distance estimator of the original project code) to
 # `ovx_estimation/estimation.csv`: Estimate / Std. / t-stat for each of the
@@ -153,15 +151,14 @@ def estimated_params(spec: str = MAIN_SPEC) -> Dict[str, float]:
     return out
 
 
-# MCMC filter settings of \cite{dtv25} ("Filtration tuning parameters"
-# column of OVXResults.xlsx).
+# MCMC filter settings (de Truchis, Thomas and Vaudree, 2026).
 FILTER_SETTINGS = {
     "n_particles": 1000,
     "window_size": 5,
     "seed": 11,
 }
 
-# Forecasting exercise settings (Section \ref{app:ovx_forecast}).
+# Forecasting exercise settings (Section S.5.3).
 FORECAST_CUTOFF = "2020-01-05"
 FORECAST_M = 20            # pattern-matching depth, "m = 20 throughout"
 FORECAST_H = 20            # forecast horizon
@@ -175,13 +172,13 @@ THRESHOLDS = (0.90, 0.95, 0.99)
 # =============================================================================
 #
 # Restricted to the purely anticipative MAR(0,1) case, the only case covered
-# by Algorithm \ref{alg:pattern_matching}: order (r, s) = (0, 1), so the
+# by the pattern-matching algorithm: order (r, s) = (0, 1), so the
 # causal polynomial is empty and a crash sends the trajectory to zero.
 
 def kfinder(x: Sequence[float], tau: int, psi: float, m: int = FORECAST_M,
             kmax: int = FORECAST_KMAX, vartheta: int = 1,
             kmin: int = 1) -> Tuple[int, float, np.ndarray]:
-    """Step 2 of Algorithm \\ref{alg:pattern_matching} (pattern matching).
+    """Step 2 of the pattern-matching algorithm (pattern matching).
 
     Port of `StableMAR.kfinder` for an anticipative AR(1).
 
@@ -216,7 +213,7 @@ def foreprob(x: Sequence[float], k0: int, h: int, maxp: float, t: int,
              psi: float, alpha: float, vartheta: int = 1,
              m: int = FORECAST_M,
              anchor: Optional[float] = None) -> Tuple[pd.DataFrame, np.ndarray]:
-    """Steps 3-8 of Algorithm \\ref{alg:pattern_matching}.
+    """Steps 3-8 of the pattern-matching algorithm.
 
     Port of `StableMAR.foreprob` for MAR(0,1). Probabilities follow
     Proposition 3.3(a):

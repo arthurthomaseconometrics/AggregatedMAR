@@ -1,4 +1,5 @@
-"""Subsampling version of the boundary test of H0: psi_1 = 0 (exploratory check).
+"""Subsampling version of the test of H0: psi_1 = 0, reported in Section S.4.2 of the
+Online Supplement of de Truchis, Fries and Thomas (2026) (alternative critical values).
 
 For each replication, the statistic computed on the full sample is compared with
 the (1 - a)-quantile of the same statistic computed on overlapping blocks of

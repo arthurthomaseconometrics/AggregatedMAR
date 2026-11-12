@@ -1,5 +1,5 @@
 {
-  "target": "main_v23.tex :: fig:combined_forecasts (figures/InSCombinedForecast.png)",
+  "target": "Paper, Figure 2",
   "data_file": "data/OVX_History.csv",
   "T": 522,
   "sample_note": "T = 522, 2015-05-31 to 2025-05-25.",

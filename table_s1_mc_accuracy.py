@@ -1,65 +1,25 @@
 #!/usr/bin/env python3
-r"""
-Reproduction of Table S.1 ("Monte Carlo estimation accuracy") of the Online
-Supplement, Section S.1 (\label{app:mc_accuracy}), consistent with the
-minimum-distance estimator (MDE) as specified in main_v23.tex.
+r"""Table S.1 of the Online Supplement of de Truchis, Fries and Thomas (2026):
+Monte Carlo estimation accuracy, Case 1 (aggregate of two anticipative
+alpha-stable AR(1) components).
 
-Data-generating process (Section 4.1 / eq. (ar1sim) of main_v23.tex)
-----------------------------------------------------------------------
-    Y_t   = X_{1,t} + X_{2,t},          X_{j,t} = varsigma_j * W_{j,t}
-    W_{j,t} = psi_j * W_{j,t+1} + eps_{j,t},   eps_{j,t} ~iid  S(alpha, beta, 1, 0)
-
-for j = 1, 2, with psi_j in (0, 1) (purely anticipative / noncausal AR(1)
-components).  Following the paper, sigma = 1.6, pi_1 = 7/16, pi_2 = 9/16, so
-that the combined scale parameters are varsigma_1 = sigma*pi_1 = 0.7 and
-varsigma_2 = sigma*pi_2 = 0.9, with psi_1 = 0.8, psi_2 = 0.3.  Three
-distributional settings are estimated:
-
-    Panel A  Cauchy         S1S,  alpha = 1   (fixed), beta = 0   (fixed)
-    Panel B  symmetric      SaS,  alpha = 1.5 (estimated), beta = 0   (fixed)
-    Panel C  general        GaS,  alpha = 1.5 (estimated), beta = 0.3 (estimated)
-
-Weighting: Assumption C2 of main_v23.tex / criterion (2.14)
-----------------------------------------------------------------------
-The archived table (Latex/resultats*, and the footnote of the currently
-compiled online_supplement2.tex) was produced with UNIFORM weights on a
-bounded grid, i.e. the estimator minimized `mean(|ecf - tcf|^2)`.  That is
-not the criterion covered by Proposition 2.1 of main_v23.tex: Assumption C2
-imposes the exponential weight
-
-    w(u, v) = (kappa / pi) * exp(-kappa (u^2 + v^2)),   kappa > 0,
-
-and it is this weight that appears in the proofs (Lemma 2.1, Lemma 4.1,
-Proposition 2.1/4.1).  This script discretizes the MDE criterion
-
-    Q_n(theta) = \iint |phi_n(u,v) - phi(u,v;theta)|^2 w(u,v) du dv
-
-with the shared quadrature module `cf_weights.py` already used to regenerate
-the subsampling sections of the supplement (S.2.2-S.2.6, see
-`run_supplement_rerun.py`), so that Table S.1 is now estimated under the
-SAME criterion whose asymptotics are established in the paper.  Pass
-`--uniform-weights` to fall back to the legacy uniform-weight criterion
-(kappa=None in `cf_weights.quadrature_weights`) for comparison with the
-archived numbers.
-
-Reproducibility
-----------------------------------------------------------------------
-  * All randomness is seeded deterministically from `--seed` (default 42):
-    replication r, sample size T, panel p all enter the per-replication
-    seed, so any subset of the run can be regenerated in isolation.
-  * `run_config.json` records every setting (DGP, grid, kappa, seeds,
-    n_starts, package versions) alongside the results.
-  * Raw per-replication estimates (`mc_raw_<panel>.csv`) and the summary
-    statistics (`mc_summary.csv`) are both saved, in addition to the
-    booktabs LaTeX table (`table_s1_mc_accuracy.tex`) formatted exactly as
-    Table S.1 of online_supplement2.tex.
+Design: psi = (0.8, 0.3), varsigma = (0.7, 0.9) (sigma = 1.6, pi_1 = 7/16);
+T = 250, 500, 1000; 1,000 replications; 10 starting values.  Three panels:
+    A  Cauchy  S1S  alpha = 1 and beta = 0 imposed
+    B  SaS          alpha = 1.5 estimated, beta = 0 imposed
+    C  GaS          alpha = 1.5 and beta = 0.3 estimated
+Estimator: minimum distance on the joint empirical characteristic function, weight
+of Assumption C2 (kappa = 1, 15 x 15 grid on [-1.5, 1.5]^2; see cf_weights.py).
+Seeds are derived from (seed, panel, T, replication), so the results do not depend on
+the number of workers.
 
 Usage
-----------------------------------------------------------------------
-    python table_s1_mc_accuracy.py                   # full paper design (slow)
-    python table_s1_mc_accuracy.py --quick            # fast smoke test
-    python table_s1_mc_accuracy.py --n-jobs 8 --seed 42
-    python table_s1_mc_accuracy.py --uniform-weights  # legacy criterion
+    python table_s1_mc_accuracy.py --n-jobs 16          # ~3 min on 12-15 cores
+    python table_s1_mc_accuracy.py --quick              # smoke test, seconds
+    python table_s1_mc_accuracy.py --uniform-weights    # uniform weights instead of C2
+
+Output (results_table_s1/): table_s1_mc_accuracy.tex, mc_summary.csv,
+mc_raw_<panel>.csv, run_config.json.
 """
 
 from __future__ import annotations
@@ -294,11 +254,7 @@ def estimate_one(Y: np.ndarray, spec: PanelSpec, u_grid: np.ndarray, v_grid: np.
     rng = np.random.default_rng(seed)
     best_fun, best_x, best_success = np.inf, None, False
     for x0 in _starting_points(spec, n_starts, rng, bounds):
-        # AUDIT 2026-09-03.  `options={"maxiter": 300}` laissait `gtol` a sa
-        # valeur par defaut 1e-5, ABSOLUE, alors que le critere pondere de
-        # l'Assumption C2 vaut ~1e-6 : L-BFGS-B s'arretait sur le gradient bien
-        # avant l'optimum.  Voir cf_weights.MDE_GTOL pour la demonstration a
-        # bruit nul.
+        # L-BFGS-B tolerances of cf_weights (see MDE_GTOL).
         res = optimize.minimize(
             mde_objective, x0, args=(spec, ecf, u_grid, v_grid, W),
             method="L-BFGS-B", bounds=bounds, options=lbfgsb_options(2000),
@@ -346,10 +302,7 @@ def run_panel(spec: PanelSpec, sample_sizes: Sequence[int], n_replications: int,
     rows: List[Dict[str, object]] = []
     for T in sample_sizes:
         t0 = time.time()
-        # AUDIT 2026-09-03.  `hash()` sur un tuple contenant une str est
-        # randomise par processus (PYTHONHASHSEED) : les graines changeaient a
-        # chaque execution, contredisant la clause de reproductibilite du
-        # docstring.  `stable_seed` utilise crc32, stable entre processus.
+        # Process-stable seeds (crc32), reproducible across runs and workers.
         seeds = [stable_seed(spec.key, T, r, base=seed_base)
                  for r in range(n_replications)]
         results = Parallel(n_jobs=n_jobs, verbose=0)(
@@ -392,7 +345,7 @@ def compute_summary(df: pd.DataFrame, spec: PanelSpec) -> pd.DataFrame:
 
 
 # =============================================================================
-# LaTeX table (format matches Table S.1 of online_supplement2.tex)
+# LaTeX table (format of Table S.1)
 # =============================================================================
 
 _SYMBOL = {
@@ -457,14 +410,14 @@ def format_table_s1(summaries: Dict[str, pd.DataFrame], sample_sizes: Sequence[i
     lines.append(r"\end{tabular}")
     lines.append(r"\begin{flushleft}")
     weight_txt = (
-        r"uniform weights on a bounded grid (legacy criterion)" if kappa is None else
+        r"uniform weights on a bounded grid" if kappa is None else
         rf"the Assumption~C2 weight $w(u,v)=(\kappa/\pi)\exp(-\kappa(u^2+v^2))$ with $\kappa={kappa:g}$"
     )
     lines.append(
         r"\footnotesize\textit{Notes:} True parameter values are $\psi_1 = 0.8$, "
         r"$\psi_2 = 0.3$, $\varsigma_1 = 0.7$, $\varsigma_2 = 0.9$.  MRE denotes the "
         r"mean relative error $\mathbb{E}[|\hat\theta - \theta_0|/|\theta_0|]$.  "
-        f"Estimation minimizes the discretized criterion (2.14) of main\\_v23.tex using {weight_txt}."
+        f"Estimation minimizes the discretized criterion (2.14) using {weight_txt}."
     )
     lines.append(r"\end{flushleft}")
     lines.append(r"\end{table}")
@@ -485,8 +438,7 @@ def main() -> None:
     ap.add_argument("--kappa", type=float, default=KAPPA_DEFAULT,
                      help="Assumption C2 weight decay (default: cf_weights.KAPPA_DEFAULT)")
     ap.add_argument("--uniform-weights", action="store_true",
-                     help="legacy mode: uniform weights (kappa=None), for comparison "
-                          "with the archived table")
+                     help="uniform weights (kappa=None) instead of the Assumption C2 weight")
     ap.add_argument("--n-grid", type=int, default=N_GRID_DEFAULT)
     ap.add_argument("--u-max", type=float, default=U_MAX_DEFAULT)
     ap.add_argument("--n-jobs", type=int, default=-1)
@@ -518,8 +470,6 @@ def main() -> None:
         psi_bounds=PSI_BOUNDS, varsigma_bounds=VARSIGMA_BOUNDS,
         alpha_bounds=ALPHA_BOUNDS, beta_bounds=BETA_BOUNDS,
         optimizer="L-BFGS-B", mde_gtol=MDE_GTOL, mde_ftol=MDE_FTOL, mde_maxiter=2000,
-        audit_fixes="2026-09-03: explicit L-BFGS-B gtol/ftol (cf_weights.MDE_GTOL); "
-                    "process-stable replication seeds (cf_weights.stable_seed)",
         python_version=sys.version, platform=platform.platform(),
         numpy_version=np.__version__, scipy_version=scipy.__version__,
         pandas_version=pd.__version__,
@@ -529,9 +479,9 @@ def main() -> None:
         json.dump(config, f, indent=2, default=str)
 
     print("=" * 78)
-    print("  Table S.1 -- Monte Carlo estimation accuracy (main_v23 / online_supplement2)")
+    print("  Table S.1 -- Monte Carlo estimation accuracy")
     print("=" * 78)
-    print(f"  Weights      : {'uniform (legacy)' if kappa is None else f'Assumption C2, kappa={kappa}'}")
+    print(f"  Weights      : {'uniform' if kappa is None else f'Assumption C2, kappa={kappa}'}")
     print(f"  Grid         : {args.n_grid}x{args.n_grid} on [-{args.u_max}, {args.u_max}]^2")
     print(f"  Sample sizes : {sample_sizes}")
     print(f"  Replications : {n_replications}   |   multi-start: {n_starts}")

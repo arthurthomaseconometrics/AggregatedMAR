@@ -1,14 +1,11 @@
 """
 Subsampling with Reparameterization (sigma, pi_1) and Gaussian Weights
 
-Weights: w(u,v) = (kappa/pi) exp(-kappa*(u^2 + v^2)), Assumption C2 of
-main_v23.tex.  The objective is a Riemann sum of the integral (2.14); the
-quadrature is provided by cf_weights.quadrature_weights.
-
-PATCH : the full-sample estimate theta_n is now the minimiser of the SAME
-criterion as the subsample estimates (see _one_rep_reparam).  It used to come
-from stablemixture.estimate(), which minimises a uniformly weighted objective,
-so that theta_n and theta_b were two different statistics.
+Weights: w(u,v) = (kappa/pi) exp(-kappa*(u^2 + v^2)) (de Truchis, Fries and Thomas,
+2026, Assumption C2).  The objective is a Riemann sum of the criterion; the quadrature
+is provided by cf_weights.quadrature_weights.  The full-sample estimate theta_n and
+every subsample estimate theta_b are the minimisers of the same criterion, from the
+same starting values, bounds and tolerances (Politis and Romano, 1994).
 
 The MDE estimation remains in the original (rho_j, varsigma_j, alpha) space.
 After each subsample estimation, results are mapped to the transformed space:
@@ -52,36 +49,16 @@ import time
 
 warnings.filterwarnings('ignore')
 
-# Nombre vise de blocs chevauchants par replication (voir _EngineReparam.mc).
+# Target number of overlapping blocks per replication (see _EngineReparam.mc).
 OV_BLOCKS_TARGET = 2000
 
 # =============================================================================
-# Statistiques robustes pour Skew/Kurt (audit 2026-09-03)
+# Robust statistics for Skew/Kurt
 # =============================================================================
 #
-# A n grand, un petit pourcentage de blocs (voir canonical_order et le
-# commentaire de mde) atteignent authentiquement le bord de l'espace des
-# parametres -- ce n'est PAS un artefact numerique (verifie par recherche
-# multi-depart dense) mais une consequence attendue du sous-echantillonnage a
-# b fini sur un espace compact.  Comme les deviations sont mises a l'echelle
-# par sqrt(b), un point qui touche le bord (distance ABSOLUE fixe a theta_n)
-# produit un score-z QUI CROIT avec b, meme si la FREQUENCE des blocs
-# concernes decroit avec b : Skew et Kurt bruts peuvent donc se degrader en
-# apparence quand n augmente, sans que cela contredise la Proposition 2.1 (qui
-# porte sur theta_n, jamais sur les bord du sous-echantillon).
-#
-# Skew tronque est un diagnostic robuste valide : verifie sur un N(0,1)
-# propre, tronquer symetriquement ROBUST_TRIM_FRAC de chaque cote laisse le
-# skewness proche de 0 quel que soit le taux de troncature.
-#
-# Kurt tronque, en revanche, N'EST PAS un diagnostic valide : la troncature
-# retire mecaniquement la queue qui DEFINIT le kurtosis en exces, biaisant
-# tout kurtosis tronque vers des valeurs negatives meme sur des donnees
-# parfaitement gaussiennes (verifie : un N(0,1) propre tronque a 10% de
-# chaque cote affiche un kurtosis ~ -1.0, pas ~0).  On rapporte a la place la
-# fraction de points au-dela de OUTLIER_Z_THRESHOLD ecarts-types, qui
-# quantifie directement le phenomene (part de la masse dans les blocs au
-# bord) sans ce biais mecanique.
+# At large n, a small share of blocks reaches the boundary of the parameter space,
+# which produces extreme standardized deviations.  Trimmed skewness/kurtosis and the
+# share of outlying deviations are reported next to the raw moments.
 ROBUST_TRIM_FRAC = 0.10
 OUTLIER_Z_THRESHOLD = 3.0
 
@@ -175,21 +152,16 @@ def vectorized_tcf(params, u_grid, v_grid, J, alpha_fixed, beta_val):
 
 def gaussian_weights(u_grid, v_grid, kappa=KAPPA_DEFAULT):
     """
-    Poids de quadrature de l'Assumption C2 (main_v23.tex).
-
-    PATCH : delegue a cf_weights.quadrature_weights, qui renvoie
+    Quadrature weights of Assumption C2:
         W[i,j] = (kappa/pi) exp(-kappa (u_i^2 + v_j^2)) * du * dv,
-    c'est-a-dire une somme de Riemann de l'integrale (2.14) et non plus
-    exp(-kappa(u^2+v^2)) brut.  La normalisation (kappa/pi et du*dv) ne change
-    pas l'argmin — donc pas les estimations — mais elle rend le critere
-    comparable entre modules et interpretable en niveau.
+    a Riemann sum of the criterion (see cf_weights.quadrature_weights).
 
     Args:
-        u_grid, v_grid: grilles d'evaluation
-        kappa: parametre de decroissance (> 0) ; None = poids uniformes
+        u_grid, v_grid: evaluation grids
+        kappa: decay parameter (> 0); None gives uniform weights
 
     Returns:
-        matrice 2D de poids de quadrature
+        2D array of quadrature weights
     """
     return quadrature_weights(u_grid, v_grid, kappa)
 
@@ -197,10 +169,10 @@ def gaussian_weights(u_grid, v_grid, kappa=KAPPA_DEFAULT):
 def fast_objective(params, ecf, u_grid, v_grid, J, alpha_fixed, beta_val,
                    kappa=KAPPA_DEFAULT):
     """
-    Critere MDE pondere (Assumption C2, main_v23.tex).
+    Weighted MDE criterion (Assumption C2).
 
     D(theta) ~= sum_{u,v} w(u,v) |varphi_n(u,v) - varphi(u,v;theta)|^2 du dv
-    avec w(u,v) = (kappa/pi) exp(-kappa (u^2 + v^2)).
+    with w(u,v) = (kappa/pi) exp(-kappa (u^2 + v^2)).
     """
     for j in range(J):
         if params[j] <= 0 or params[j] >= 1:
@@ -224,25 +196,12 @@ def fast_objective(params, ecf, u_grid, v_grid, J, alpha_fixed, beta_val,
 
 
 # =============================================================================
-# UN SEUL estimateur, pour l'echantillon complet comme pour les blocs
+# One estimator for the full sample and for the blocks
 # =============================================================================
 #
-# AUDIT 2026-09-03 (validite Politis-Romano).  PR exige que theta_b soit LA MEME
-# fonctionnelle appliquee au sous-echantillon que theta_n a l'echantillon
-# complet.  Ce n'etait pas le cas :
-#   - theta_n partait de stablemixture.estimate(...), maxiter = 300 ;
-#   - chaque bloc partait de theta_n lui-meme (warm start), maxiter 60 ou 100.
-# Un depart dependant des donnees fait de theta_b une fonction de l'echantillon
-# ENTIER : ce n'est plus la statistique dont PR approxime la loi.  Effet mesure
-# a n = 10 000 : l'ecart-type des deviations de bloc en pi_1 etait degonfle de
-# 13% (3.49 en warm start contre 3.93 en cold start), soit une sous-couverture
-# unidirectionnelle sur la seule direction faiblement courbee ; les autres
-# coordonnees etaient intactes (ratios 0.98-1.04).
-#
-# Les departs sont desormais FIXES (independants des donnees) et forment des
-# PAIRES MIROIR sous l'echange des composantes.  L'ensemble de departs est donc
-# invariant par label switching, ce qui rend la mise en ordre canonique de
-# `canonical_order` bien definie et ne privilegie aucune etiquette.
+# Subsampling (Politis and Romano, 1994) requires theta_b to be the same functional
+# applied to the subsample as theta_n to the full sample: same starting values,
+# bounds, maximum number of iterations and tolerances, no data-dependent warm start.
 MDE_STARTS_J2 = (
     (0.75, 0.25, 0.50, 0.50, 1.50),
     (0.25, 0.75, 0.50, 0.50, 1.50),   # miroir de la precedente
@@ -269,18 +228,10 @@ def mde_starts(J, fix_alpha, fix_beta, beta_val, n_starts=N_STARTS_DEFAULT):
 
 def canonical_order(raw, J):
     """
-    Restriction d'ordre de l'Assumption C1 de main_v23.tex.
+    Ordering restriction of Assumption C1 (it rules out label switching).
 
-    AUDIT 2026-09-03.  Aucun ordre n'etait impose sur les rho : les bornes sont
-    (0.01, 0.99) pour les deux composantes.  Sans ordre, D_0 admet J! minima et
-    l'Assumption C5 tombe ; un bloc etiquete a l'envers rapporte
-    pi_1 -> 1 - pi_1 = 0.5625 au lieu de 0.4375.  Mesure a n = 1000 : 3% des
-    blocs revenaient inverses.
-
-    Convention retenue : rho DECROISSANT (composante la plus persistante en
-    premier), qui est celle du DGP (psi_1 = 0.8 > psi_2 = 0.3) et celle de
-    table_s1_mc_accuracy.sort_by_psi_desc.  Le SENS de l'ordre est indifferent
-    (C1 l'ecrit croissant) : ce qui compte est qu'un ordre soit fixe.
+    Components are put in DECREASING order of rho (most persistent first), the order
+    of the simulation design (psi_1 = 0.8 > psi_2 = 0.3).
     """
     raw = np.asarray(raw, dtype=float)
     if raw.size < 2 * J or not np.all(np.isfinite(raw[:2 * J])):
@@ -390,13 +341,10 @@ def _reparam_true(tp_full, J, fix_alpha, fix_beta):
 def _one_rep_reparam(seed, n, b, tp_full, tp_reparam, J, av, bv, fa, fb,
                      ug, vg, bounds, pnames_reparam, clevels, ci_step, kappa,
                      n_starts=N_STARTS_DEFAULT):
-    """Une replication Monte Carlo, reparametrisation post-estimation.
+    """One Monte Carlo replication, post-estimation reparameterization.
 
-    AUDIT 2026-09-03.  theta_n et les theta_b sont maintenant produits par UN
-    SEUL appel a `mde`, avec les memes departs fixes, les memes bornes, le meme
-    maxiter et les memes tolerances : c'est la condition "meme fonctionnelle"
-    de Politis-Romano.  Auparavant theta_n partait de stablemixture.estimate
-    (maxiter 300) et les blocs partaient de theta_n (warm start, maxiter 60-100).
+    theta_n and the theta_b are produced by the same call to `mde`, with the same
+    fixed starting values, bounds, maximum number of iterations and tolerances.
     """
     from stablemixture import StableMixtureDeconvolution
     af = av if fa else None
@@ -552,15 +500,9 @@ class _EngineReparam:
     def mc(self, n, M, b, seed=42, conf_levels=(0.90, 0.95),
            ci_step=None, n_cores=-1, backend='loky'):
         """Run M replications in parallel with Gaussian weights."""
-        # AUDIT 2026-09-03 (thinning).  Avant : `ci_step = 1` en dur, et le
-        # `Nb = n - b + 1` calcule juste au-dessus n'etait jamais utilise --
-        # du code mort.  La Section S.2.1 du supplement annonce pourtant des
-        # blocs chevauchants "with appropriate thinning to reduce dependence".
-        # Le pas est desormais choisi pour viser OV_BLOCKS_TARGET blocs : aux
-        # tailles n <= 1000 cela laisse ci_step = 1 (chevauchement complet, ce
-        # que recommande PR99 pour une serie stationnaire), et cela borne le
-        # cout aux grandes tailles ou n - b + 1 depasse 10^4 optimisations par
-        # replication.  La valeur effective est imprimee et enregistree.
+        # Overlapping blocks for the confidence intervals: the step is chosen to target
+        # OV_BLOCKS_TARGET blocks (ci_step = 1, i.e. all n - b + 1 blocks, for n <= 1000).
+        # The value used is printed and recorded.
         if ci_step is None:
             ci_step = max(1, int(np.ceil((n - b + 1) / OV_BLOCKS_TARGET)))
         ci_step = max(int(ci_step), 1)
@@ -649,20 +591,8 @@ class _EngineReparam:
                     v = sd[:, k]
                     a['pooled_no'][p].extend(v[np.isfinite(v)].tolist())
 
-        # AUDIT 2026-09-03 (moments poolés).  Dev.Mean / Dev.Std / Skew / Kurt
-        # etaient des MOYENNES, sur les M replications, de statistiques
-        # calculees chacune sur N_b deviations seulement -- soit 6, 8 ou 10
-        # points a n = 250, 500, 1000.  Une asymetrie ou un kurtosis sur 6
-        # points n'a aucun contenu, et l'estimateur d'un moment d'ordre 3 ou 4
-        # y est severement biaise.  La Section S.2.1 du supplement decrit
-        # d'ailleurs deja la bonne procedure : "The pooled non-overlapping
-        # block deviations ACROSS ALL Monte Carlo replications are subjected to
-        # several normality diagnostics".  Ces quatre colonnes sont donc
-        # desormais calculees sur l'echantillon poole, ce qui aligne le code
-        # sur le texte.  Les taux de rejet SW / JB / KS restent, eux, des
-        # moyennes de rejets par replication : ce sont des TAUX, et leur
-        # faible puissance a N_b petit est une propriete a rapporter, pas un
-        # defaut a corriger.
+        # Dev.Mean / Dev.Std / Skew / Kurt are computed on the non-overlapping block
+        # deviations pooled across all Monte Carlo replications.
         a['moments_pooled'] = {}
         for p in pnames:
             z = np.asarray(a['pooled_no'][p], dtype=float)
@@ -741,9 +671,7 @@ class _EngineReparam:
             ax[i, 2].legend()
             for j in range(3):
                 ax[i, j].grid(True, alpha=.3)
-        # AUDIT 2026-09-03.  `tight_layout()` sans `rect` ignore
-        # `fig.suptitle()`, qui vient alors chevaucher les titres de la
-        # premiere rangee de sous-graphiques.
+        # Leave room for the suptitle.
         fig.tight_layout(rect=(0, 0, 1, 0.97))
         if path:
             plt.savefig(path, dpi=200, bbox_inches='tight')
@@ -785,7 +713,7 @@ def run_study_reparam(sample_sizes: List[int] = [250, 500, 1000, 10000],
     """
     os.makedirs(output_dir, exist_ok=True)
     eng = _EngineReparam(kappa=kappa, **engine_kwargs)
-    print("Critere MDE (Assumption C2, main_v23.tex):")
+    print("Critere MDE (Assumption C2):")
     check_grid(eng.u_grid, eng.v_grid, eng.kappa)
     all_df = {}
     all_agg = {}
@@ -793,7 +721,7 @@ def run_study_reparam(sample_sizes: List[int] = [250, 500, 1000, 10000],
     print(f"\n{'='*70}")
     print(f"SUBSAMPLING WITH REPARAMETERIZATION AND GAUSSIAN WEIGHTS")
     print(f"  Weight function: w(u,v) = (kappa/pi) exp(-kappa(u^2+v^2)), "
-          f"kappa={kappa}  [Assumption C2, main_v23.tex]")
+          f"kappa={kappa}  [Assumption C2]")
     print(f"  Reparameterization: (sigma, pi_1) instead of (varsigma_1, varsigma_2)")
     print(f"{'='*70}")
 
@@ -822,7 +750,7 @@ def run_study_reparam(sample_sizes: List[int] = [250, 500, 1000, 10000],
     with open(os.path.join(output_dir, 'summary_all.txt'), 'w') as f:
         f.write("SUBSAMPLING CONVERGENCE STUDY (REPARAMETERIZED + GAUSSIAN WEIGHTS)\n")
         f.write(f"Weight function: w(u,v) = (kappa/pi) exp(-kappa(u^2+v^2)), "
-                f"kappa={kappa}  [Assumption C2, main_v23.tex]\n")
+                f"kappa={kappa}  [Assumption C2]\n")
         f.write("=" * 80 + "\n\n")
         for n in sample_sizes:
             a = all_agg[n]

@@ -31,9 +31,9 @@ class StableMixtureDeconvolution:
     The model parameters include:
         - rho_j: Autoregressive coefficients (0 < rho_j < 1) for each component
         - varsigma_j: Combined scale parameters (varsigma_j = sigma * pi_j)
-        - alpha: Tail index parameter.  Estime, il est contraint a (1, 2) par
-          l'Assumption C2 de main_v23.tex (voir cf_weights.ALPHA_BOUNDS) ;
-          impose via fix_alpha=True, il peut prendre toute valeur de (0, 2].
+        - alpha: Tail index parameter.  When estimated, it is restricted to (1, 2)
+          (Assumption C2, see cf_weights.ALPHA_BOUNDS); when imposed
+          (fix_alpha=True), it can take any value in (0, 2].
         - beta: Asymmetry parameter (-1 <= beta <= 1)
     
     Derived parameters:
@@ -135,16 +135,8 @@ class StableMixtureDeconvolution:
         # Generate J non-causal components
         X_components = []
 
-        # AUDIT 2026-09-03 (flux de graines).  Avant : `random_state=seed + j`.
-        # Les appelants Monte Carlo passent des graines CONTIGUES (seed + m pour
-        # la replication m), si bien que la composante j = 1 de la replication m
-        # et la composante j = 0 de la replication m + 1 recevaient la MEME
-        # sequence d'innovations (verifie : sequences identiques au flottant
-        # pres).  Les M replications formaient donc une chaine dependante, et
-        # toutes les erreurs Monte Carlo rapportees (Std Est., couvertures, taux
-        # de rejet) etaient sous-estimees.  SeedSequence.spawn donne J flux
-        # independants par valeur de `seed`, sans recouvrement entre graines
-        # voisines.
+        # Independent innovation streams for the J components (SeedSequence.spawn),
+        # so that neighbouring seeds never share innovations.
         if seed is not None:
             streams = [np.random.default_rng(child)
                        for child in np.random.SeedSequence(int(seed)).spawn(self.num_components)]
@@ -169,16 +161,9 @@ class StableMixtureDeconvolution:
             # Adjust with pi_j and sigma
             X_j = pi_j * sigma * X_j
 
-            # AUDIT 2026-09-03 (cote du burn-in).  Avant : `X_j[burn_in:]`.
-            # La recursion est ARRIERE, initialisee par la frontiere artificielle
-            # X_j[T+burn_in-1] = 0 : le transitoire est donc a la FIN du tableau,
-            # pas au debut.  `X_j[burn_in:]` jetait la partie propre et gardait la
-            # partie contaminee -- la derniere observation valait exactement 0
-            # dans 100% des replications (elle ne recoit meme pas son propre
-            # epsilon) et |X_t| etait visiblement attenue sur ~10-15 points.
-            # A T = 250 cela represente ~5% de l'echantillon plus un point
-            # deterministe.  On garde les T points les PLUS ELOIGNES de la
-            # frontiere, comme le fait deja table_s1_mc_accuracy.simulate_component.
+            # The recursion runs backward from the artificial terminal value
+            # X[T+burn_in-1] = 0, so the transient is at the end of the array: the first T
+            # points are kept.
             X_components.append(X_j[:T])
         
         # Compute the mixed process
@@ -312,15 +297,8 @@ class StableMixtureDeconvolution:
                     # Theoretical characteristic function
                     cf_theo = self.char_function(u, v, params)
 
-                    # Empirical characteristic function
-                    # BUGFIX (audit 2026-07): char_function is the CF of the pair
-                    # (Y_t, Y_{t-1}) with u <-> Y_t (later obs) and v <-> Y_{t-1}
-                    # (earlier obs). The ECF must use the same pairing:
-                    # u*Y[1:] + v*Y[:-1]. The previous pairing (u*Y[:-1] + v*Y[1:])
-                    # swapped u and v; since the pair CF of a noncausal stable
-                    # process is NOT exchangeable for alpha < 2, this induced a
-                    # large asymptotic bias in the full-sample estimates
-                    # (e.g. rho_1 -> 0.94 instead of 0.80 on simulated data).
+                    # Empirical CF of the pair (Y_t, Y_{t-1}): u goes with the later observation,
+                    # as in char_function.
                     cf_emp = np.mean(np.exp(1j * (u * Y[1:] + v * Y[:-1])))
                     
                     # Squared difference weighted
@@ -451,9 +429,7 @@ class StableMixtureDeconvolution:
             for _ in range(self.num_components):
                 bounds.append((0.005, 5))
             
-            # Bounds for alpha: (1, 2) strict, Assumption C2 of main_v23.tex.
-            # Ne s'applique que si alpha est estime ; une specification a alpha
-            # fixe (fix_alpha=True) reste libre de prendre alpha = 1.
+            # Bounds for alpha: (1, 2) open (Assumption C2), only when alpha is estimated.
             if not self.fix_alpha:
                 bounds.append(ALPHA_BOUNDS)
             
@@ -471,9 +447,7 @@ class StableMixtureDeconvolution:
                     print("Step 1: Estimation with uniform weights...")
                     print(f"Initial guess: {initial_guess}")
                 
-                # AUDIT 2026-09-03.  `gtol` restait a son defaut 1e-5, ABSOLU,
-                # alors que le critere vaut ~1e-6 : l'optimiseur s'arretait sur
-                # le gradient bien avant l'optimum.  Voir cf_weights.MDE_GTOL.
+                # L-BFGS-B tolerances of cf_weights (see MDE_GTOL).
                 result_step1 = optimize.minimize(
                     lambda params: self.objective_function(params, Y, use_optimal_weights=False),
                     initial_guess,
@@ -1441,10 +1415,7 @@ class StableMixtureDeconvolution:
         
         for u in u_grid:
             for v in v_grid:
-                # Calculate empirical characteristic function
-                # BUGFIX (audit 2026-07): same pairing correction as in
-                # objective_function - u pairs with the later observation
-                # to match char_function's (Y_t, Y_{t-1}) convention.
+                # Same pairing as in objective_function: u goes with the later observation.
                 cf_emp = np.mean(np.exp(1j * (u*Y[1:] + v*Y[:-1])))
 
                 # Variance component (V_n)

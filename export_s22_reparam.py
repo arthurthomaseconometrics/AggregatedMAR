@@ -1,63 +1,27 @@
 #!/usr/bin/env python3
-r"""
-Export S.2.2 -- Unrestricted subsampling, reparameterized space
-(online_supplement3.tex, \label{app:subsampling_reparam}).
+r"""Tables S.3-S.9 and Figures S.1-S.5 of the Online Supplement of de Truchis, Fries and
+Thomas (2026), Section S.3: subsampling verification of asymptotic normality.
 
-Runs the engine of subsampling_reparam.py (Assumption C2 weight, single MDE
-functional for the full sample and for every block) and emits, in one .tex
-file, everything Section S.2 needs:
+Simulates M aggregates of two anticipative alpha-stable AR(1) components
+(psi = (0.8, 0.3), sigma = 1.6, pi_1 = 0.4375, alpha = 1.5, beta = 0) for each
+sample size n, estimates the model on the full sample and on subsamples of size
+b = floor(n^{2/3}) with the same minimum distance estimator (Assumption C2 weight,
+kappa = 1), and reports, in the reparameterized space (psi_1, psi_2, sigma, pi_1,
+alpha), the normality diagnostics of the non-overlapping block deviations and the
+coverage of quantile-based and normal confidence intervals (overlapping blocks,
+thinned to about 2,000 per replication).  Engine: subsampling_reparam.py.
 
-  - the Monte Carlo design table (tab:mc_design), built from the sample sizes
-    ACTUALLY run rather than from a hard-coded list;
-  - the top-of-S.2 summary table (tab:subsampling_summary);
-  - one detail table (tab:subsampling_n<n>) and one figure
-    (fig:diagnostics_n<n>) per sample size;
-  - figures in <output-dir>/diagnostics_n<n>.png, matching the
-    \includegraphics paths of online_supplement3.tex;
-  - per-n summary CSVs and a run_config.json recording every setting.
-
-This is intended to be the ONLY resampling exercise of the online supplement:
-the criterion-difference test (old S.2.3), the pi_1 = 1/2 restricted study
-(old S.2.4) and the pi_1 = 0.4375 restricted study (old S.2.5) were motivated
-by an apparent non-identification of pi_1 that the 2026-09-03 audit traced to
-the optimizer rather than to the criterion.  See the AUDIT block below.
-
-AUDIT 2026-09-03 -- what changed and why
-----------------------------------------
-1. cf_weights.MDE_GTOL.  scipy's L-BFGS-B stops on ABSOLUTE criteria: `gtol`
-   defaults to 1e-5 on max|projected gradient|, while the Assumption-C2
-   weighted criterion is ~1e-6 at the optimum.  With the defaults the
-   optimizer halted before moving along the weakly curved (pi_1) direction.
-   Noiseless check -- replace phi_n by the exact phi(.;theta_0), i.e. n = inf:
-       scipy defaults -> (psi1,psi2,sigma,pi1,alpha)
-                       = (0.7699, 0.2358, 1.6119, 0.5090, 1.5017)
-       with MDE_GTOL  -> (0.8000, 0.3000, 1.6000, 0.4375, 1.5000) = theta_0
-   The stall is a FIXED displacement while the sampling s.d. shrinks like
-   n^{-1/2}, so the bias in s.d. units grows like sqrt(n) -- which is exactly
-   the Dev.Mean drift and coverage collapse previously read as evidence that
-   pi_1 was unidentified.  pi_1 IS identified; the paper already proves it
-   (main_v23.tex, eq. (2.11)-(2.13)).
-2. subsampling_reparam.mde.  theta_n and every theta_b are now the SAME
-   functional (same starts, bounds, maxiter, tolerances), as Politis-Romano
-   requires.  The previous warm start of each block at theta_n deflated the
-   s.d. of the pi_1 block deviations by 13%.
-3. subsampling_reparam.canonical_order.  Assumption C1's ordering restriction
-   is now enforced (3% of blocks came back label-switched at n = 1000).
-4. stablemixture.generate.  The burn-in was discarded on the wrong side of a
-   BACKWARD recursion, so the contaminated tail was kept and the clean head
-   thrown away; the last observation was exactly 0 in 100% of replications.
-   Independent per-component seed streams also replace `seed + j`, which made
-   component 2 of replication m share its innovations with component 1 of
-   replication m+1.
-5. Dev.Mean / Dev.Std / Skew / Kurt are computed on the POOLED non-overlapping
-   deviations, as Section S.2.1 already describes, instead of being averages
-   of per-replication statistics computed on N_b = 6 to 10 points.
+Writes, in <output-dir>:
+    summary_n<n>.csv, meta_n<n>.json, diagnostics_n<n>.png   (one per sample size)
+    s22_reparam.tex   Table S.3 (design), Table S.4 (summary), Tables S.5-S.9 and
+                      the figure environments of Figures S.1-S.5
+    run_config_n<...>.json
 
 Usage
------
-    python export_s22_reparam.py                        # n = 250/500/1000, M=200
-    python export_s22_reparam.py --quick                 # smoke test
-    python export_s22_reparam.py --sample-sizes 250 500 1000 --M 200 --n-cores -1
+    python export_s22_reparam.py --sample-sizes 500 1000 10000 100000 500000 --M 200
+    python export_s22_reparam.py ... --skip-existing     # restart an interrupted run
+    python export_s22_reparam.py ... --tex-only          # rebuild the .tex from the CSVs
+    python export_s22_reparam.py --quick                 # smoke test, ~30 s
 """
 
 from __future__ import annotations
@@ -123,25 +87,17 @@ def main() -> None:
     eng = _EngineReparam(J=2, true_params=true_params, alpha=true_params[4],
                          beta=true_params[5], fix_alpha=False, fix_beta=True,
                          kappa=args.kappa, n_starts=args.n_starts)
-    print("Critere MDE (Assumption C2, main_v23.tex):")
+    print("Critere MDE (Assumption C2):")
     check_grid(eng.u_grid, eng.v_grid, args.kappa)
 
     config = dict(
-        section="S.2.2 (app:subsampling_reparam)", sample_sizes=sample_sizes, M=M,
+        section="Online Supplement, Section S.3.2", sample_sizes=sample_sizes, M=M,
         b_exponent=args.b_exponent, kappa=args.kappa, seed=args.seed,
         true_params=true_params, n_cores=args.n_cores,
         n_starts=args.n_starts, ci_step=args.ci_step,
         ov_blocks_target=OV_BLOCKS_TARGET,
         optimizer="L-BFGS-B", mde_gtol=MDE_GTOL, mde_ftol=MDE_FTOL,
         mde_maxiter=MDE_MAXITER,
-        audit_fixes=[
-            "explicit L-BFGS-B gtol/ftol (cf_weights.MDE_GTOL)",
-            "single MDE functional for full sample and blocks (Politis-Romano)",
-            "Assumption C1 ordering enforced (subsampling_reparam.canonical_order)",
-            "burn-in kept on the correct side of the backward recursion",
-            "independent per-component seed streams",
-            "pooled non-overlapping deviations for Dev.Mean/Std/Skew/Kurt",
-        ],
         python_version=sys.version, platform=platform.platform(),
         numpy_version=np.__version__, scipy_version=scipy.__version__,
         pandas_version=pd.__version__, timestamp=time.strftime("%Y-%m-%d %H:%M:%S"),

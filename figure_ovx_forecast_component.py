@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 r"""
-Figures \ref{fig:bubble_forecast_component1} and
-\ref{fig:bubble_forecast_component2} -- per-component graphical diagnostics,
-Section \ref{app:ovx_figures} of online_supplement3.tex (figures
-`figures/InSForeprob2020Obs1AllRisk.pdf` and `...Obs2AllRisk.pdf`).
+Figures S.7 and S.8 of the Online Supplement of de Truchis, Fries and Thomas (2026): per-component graphical
+diagnostics of the 2020 OVX forecast (Section S.5.4).
 
-Layout reproduced from `stablemixture_app.create_forecast_plots`, a 3 x 3
-grid:
+Layout: a 3 x 3 grid:
 
   * top row:    crash-probability profiles for thresholds 0.90, 0.95, 0.99.
     Probability of crashing at the date (red, round markers), of surviving
@@ -57,7 +54,7 @@ FULLVIEW_COLORS = ["m", "c", "r"]
 
 def compute(x: np.ndarray, t: int, psi: float, alpha: float, k0: int,
             m: int, h: int, vartheta: int, anchor) -> Dict[float, Dict]:
-    """One pass of Algorithm \\ref{alg:pattern_matching} per threshold."""
+    """One pass of the pattern-matching algorithm per threshold."""
     out = {}
     for thr in oc.THRESHOLDS:
         df_prob, traj = oc.foreprob(x, k0=k0, h=h, maxp=thr, t=t, psi=psi,
@@ -214,8 +211,7 @@ def run_one(df: pd.DataFrame, x: np.ndarray, t: int, j: int, params: Dict,
     plt.close(fig)
 
     oc.write_run_config(outdir, {
-        "target": f"online_supplement3.tex :: fig:bubble_forecast_component{j} "
-                  f"(figures/InSForeprob2020Obs{j}AllRisk.pdf)",
+        "target": f"Online Supplement, Figure S.{6 + j}",
         "data_file": os.path.relpath(args.data, oc.HERE),
         "T": int(len(df)),
         "sample_note": oc.sample_note(df),
@@ -254,7 +250,7 @@ def main() -> None:
     anchor = None      # |X_t0| measured on the series, as in the application
 
     print("=" * 72)
-    print("Figures \\ref{fig:bubble_forecast_component1/2} -- OVX diagnostics")
+    print("Figures S.7-S.8 -- OVX diagnostics")
     print("=" * 72)
     print(f"  sample: {oc.sample_note(df)}")
     print(f"  cut-off t_0 = {df.index[t]:%Y-%m-%d} (index {t}), "

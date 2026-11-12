@@ -2,8 +2,9 @@
 """
 Preflight check -- run this FIRST on the cluster, before burning core-hours.
 
-It verifies that the four audit fixes of 2026-09-03 are actually active in the
-environment you are about to run in.  Takes a few seconds.  Exit code 0 = all
+It checks, in the environment you are about to run in, the optimizer tolerances,
+the simulation of the data-generating process, the ordering of the labels and the
+multi-start of the estimators.  Takes a few seconds.  Exit code 0 = all
 good, 1 = at least one check failed (do NOT launch the production jobs).
 
     python hpc/preflight_check.py
@@ -27,7 +28,7 @@ def check(name, ok, detail=""):
         FAIL.append(name)
 
 
-print("Preflight check -- audit fixes of 2026-09-03\n")
+print("Preflight check\n")
 print("Environment")
 print(f"  python {sys.version.split()[0]} | numpy {np.__version__} | "
       f"scipy {__import__('scipy').__version__}")
