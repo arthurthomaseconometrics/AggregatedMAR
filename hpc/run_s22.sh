@@ -15,7 +15,7 @@ cd "$(dirname "$0")/.."
 SIZES="${1:-500 1000 10000 100000 500000}"
 M="${2:-200}"
 NCORES="${3:-$( (command -v nproc >/dev/null && nproc) || sysctl -n hw.ncpu )}"
-OUTDIR=resultats_reparam
+OUTDIR=results_reparam
 
 echo "sizes=$SIZES  M=$M  cores=$NCORES  started=$(date)"
 python3 hpc/preflight_check.py || { echo "PREFLIGHT FAILED"; exit 1; }

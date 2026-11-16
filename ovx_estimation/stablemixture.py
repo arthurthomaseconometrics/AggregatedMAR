@@ -837,14 +837,14 @@ class StableMixtureDeconvolution:
                             window_size: int = 5, n_jobs: int = 4, 
                             seed: Optional[int] = 42) -> Tuple[List[np.ndarray]]:
         """
-        Improved MCMC filter that properly accounts for varsigma_j parameters.
+        MCMC filter that accounts for the varsigma_j parameters.
         
-        Key improvements:
-        1. Correct marginal distribution using alpha (not proposal_alpha)
-        2. Proper scaling using varsigma_j
+        Main features:
+        1. Marginal distribution with the model alpha (not proposal_alpha)
+        2. Scaling by varsigma_j
         3. Adaptive weighting based on component scales
         4. Component-specific MCMC proposal variances
-        5. Optimal residual redistribution
+        5. Residual redistribution proportional to varsigma_j
         
         Args:
             Y: Observed time series
@@ -907,9 +907,9 @@ class StableMixtureDeconvolution:
         else:
             seed_offset = np.random.randint(0, 10000)
         
-        def process_timepoint_improved(t_idx, seed_offset):
+        def process_timepoint(t_idx, seed_offset):
             """
-            Improved time point processing with proper varsigma_j handling.
+            Processing of one time point, with scaling by varsigma_j.
             """
             
             # Set non-interactive backend for this worker process
@@ -932,18 +932,18 @@ class StableMixtureDeconvolution:
                 X_particles = [np.zeros((n_particles, window_size)) for _ in range(self.num_components)]
                 weights = np.zeros(n_particles)
                 
-                # IMPROVEMENT 1: Generate particles with correct marginal distribution
+                # Generate particles from the marginal distribution
                 for i in range(n_particles):
                     for j in range(self.num_components):
                         rho_j = rho_values[j]
                         varsigma_j = varsigmas[j]
                         
-                        # Generate component center from CORRECT marginal distribution
+                        # Generate component center from the marginal distribution
                         if alpha != 1:
                             # Use TRUE alpha, not proposal_alpha
                             marginal_scale = varsigma_j / ((1 - abs(rho_j)**alpha)**(1/alpha))
                             x_center = stats.levy_stable.rvs(
-                                alpha=alpha, beta=beta,  # CORRECT: use alpha, not proposal_alpha
+                                alpha=alpha, beta=beta,  # model alpha, not proposal_alpha
                                 scale=marginal_scale,
                                 loc=0
                             )
@@ -959,12 +959,12 @@ class StableMixtureDeconvolution:
                         # Place at the center of the window
                         X_particles[j][i, half_window] = x_center
                         
-                        # IMPROVEMENT 2: Propagate with correct innovation scale
+                        # Propagate with the innovation scale varsigma_j
                         # Propagate forward
                         for k in range(half_window+1, window_size):
                             innovation = stats.levy_stable.rvs(
                                 alpha=alpha, beta=beta, 
-                                scale=varsigma_j,  # CORRECT: use varsigma_j directly
+                                scale=varsigma_j,  # scale varsigma_j
                                 loc=0
                             )
                             X_particles[j][i, k] = rho_j * X_particles[j][i, k-1] + innovation
@@ -973,7 +973,7 @@ class StableMixtureDeconvolution:
                         for k in range(half_window-1, -1, -1):
                             innovation = stats.levy_stable.rvs(
                                 alpha=alpha, beta=beta, 
-                                scale=varsigma_j,  # CORRECT: use varsigma_j directly
+                                scale=varsigma_j,  # scale varsigma_j
                                 loc=0
                             )
                             X_particles[j][i, k] = rho_j * X_particles[j][i, k+1] + innovation
@@ -983,7 +983,7 @@ class StableMixtureDeconvolution:
                     for j in range(self.num_components):
                         combined += X_particles[j][i]
                     
-                    # IMPROVEMENT 3: Adaptive particle weighting based on component scales
+                    # Adaptive particle weighting based on component scales
                     residuals = y_window - combined
                     
                     # Calculate error score
@@ -993,21 +993,21 @@ class StableMixtureDeconvolution:
                         power = min(alpha, 1.5)
                         error_score = np.mean(np.abs(residuals)**power)
                     
-                    # IMPROVEMENT: Adaptive concentration parameter based on total scale
+                    # Adaptive concentration parameter based on total scale
                     total_scale = sum(varsigmas)
                     adaptive_gamma = 3.0 / max(total_scale, 0.1)  # Inverse scaling
                     
                     # Convert to weight
                     weights[i] = np.exp(-error_score * adaptive_gamma)
                 
-                # IMPROVEMENT 4: MCMC refinement with component-specific proposal variances
+                # MCMC refinement with component-specific proposal variances
                 for mcmc_iter in range(2):  # 2 iterations of MCMC
                     for i in range(n_particles):
                         for j in range(self.num_components):
                             # Store current state
                             current_component = X_particles[j][i].copy()
                             
-                            # IMPROVEMENT: Component-specific proposal variance
+                            # Component-specific proposal variance
                             # Base proposal variance on varsigma_j
                             proposal_std = max(varsigmas[j] * 0.1, 0.01)  # Adaptive scaling
                             
@@ -1088,7 +1088,7 @@ class StableMixtureDeconvolution:
             n_jobs = max(1, multiprocessing.cpu_count() - 4)
         
         if show_progress:
-            print(f"Improved parallel filtering with {n_jobs} processes, {n_particles} particles per time point")
+            print(f"Parallel filtering with {n_jobs} processes, {n_particles} particles per time point")
             print(f"Processing {T - 2*half_window} time points...")
         
         # Process time points in parallel
@@ -1096,13 +1096,13 @@ class StableMixtureDeconvolution:
         if show_progress:
             with Parallel(n_jobs=n_jobs, backend="loky", prefer="processes") as parallel:
                 results = parallel(
-                    delayed(process_timepoint_improved)(t, seed_offset) 
-                    for t in tqdm(timepoints, desc="Improved Filtering", ncols=80)
+                    delayed(process_timepoint)(t, seed_offset) 
+                    for t in tqdm(timepoints, desc="Filtering", ncols=80)
                 )
         else:
             with Parallel(n_jobs=n_jobs, backend="loky", prefer="processes") as parallel:
                 results = parallel(
-                    delayed(process_timepoint_improved)(t, seed_offset) for t in timepoints
+                    delayed(process_timepoint)(t, seed_offset) for t in timepoints
                 )
         
         # Process results
@@ -1123,7 +1123,7 @@ class StableMixtureDeconvolution:
             for j in range(self.num_components):
                 X_filtered[j][t] = X_filtered[j][T - half_window - 1] * (rho_values[j] ** (t - (T - half_window - 1)))
         
-        # IMPROVEMENT 5: Optimal residual redistribution based on varsigma_j
+        # Optimal residual redistribution based on varsigma_j
         if show_progress:
             print("Optimal final adjustment using varsigma weights...")
         
@@ -1135,14 +1135,14 @@ class StableMixtureDeconvolution:
         # Calculate residuals
         residual = Y - combined
         
-        # IMPROVEMENT: Redistribute residuals proportionally to varsigma_j (not magnitudes)
+        # Redistribute residuals proportionally to varsigma_j (not magnitudes)
         total_varsigma = sum(varsigmas)
         for j in range(self.num_components):
             weight_j = varsigmas[j] / total_varsigma
             X_filtered[j] += weight_j * residual
         
         if show_progress:
-            print("Improved filtering completed!")
+            print("Filtering completed.")
             for j in range(self.num_components):
                 component_var = np.var(X_filtered[j])
                 print(f"Component {j+1} variance: {component_var:.4f} (varsigma_{j+1}={varsigmas[j]:.4f})")

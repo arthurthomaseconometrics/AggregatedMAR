@@ -427,8 +427,8 @@ def format_table_s2(summaries: Dict[str, pd.DataFrame], sample_sizes: Sequence[i
         r"\footnotesize\textit{Notes:} True parameter values are $\psi_1 = 0.8$, "
         r"$\psi_2 = 0.3$, $\phi_1 = 0.3$, $\phi_2 = 0.5$, $\varsigma_1 = 0.7$, "
         r"$\varsigma_2 = 0.9$ (same latent scale/mixing design as Table~\ref{tab:mc_accuracy_full}, "
-        r"extended with causal roots $\phi_1,\phi_2$).  MRE denotes the mean relative "
-        r"error $\mathbb{E}[|\hat\theta - \theta_0|/|\theta_0|]$.  Estimation minimizes "
+        r"extended with causal roots $\phi_1,\phi_2$).  MRE denotes the mean absolute "
+        r"relative error $\mathbb{E}[|\hat\theta - \theta_0|/|\theta_0|]$.  Estimation minimizes "
         f"the discretized criterion (2.14) using {weight_txt}."
     )
     lines.append(r"\end{flushleft}")

@@ -64,19 +64,19 @@ OUTLIER_Z_THRESHOLD = 3.0
 
 
 def robust_shape_stats(z, trim_frac=ROBUST_TRIM_FRAC, z_threshold=OUTLIER_Z_THRESHOLD):
-    """Skewness tronquee (valide) + fraction de points extremes (remplace un
-    kurtosis tronque, structurellement biase -- voir commentaire ci-dessus).
+    """Trimmed skewness and share of outlying points.
 
-    La fraction extreme est calculee apres standardisation ROBUSTE (mediane /
-    MAD), pas moyenne/ecart-type brut : la contamination elle-meme gonfle la
-    moyenne et l'ecart-type, ce qui MASQUE les points extremes qu'on cherche
-    justement a detecter (verifie : sur un melange 94% N(0,1) + 6% N(3.7,0.3),
-    la standardisation par (moyenne, ecart-type) ne detecte que ~0.3% de
-    points au-dela de 3 sigma au lieu des ~6% reels, la contamination ayant
-    gonfle l'ecart-type brut jusqu'a ~1.45).  La mediane et le MAD ont un point
-    de rupture de 50% et restent quasi inchanges par 6% de contamination.
+    A trimmed kurtosis is not reported because trimming biases it mechanically
+    towards negative values.  The share of outlying points is computed after a
+    robust standardization (median / MAD) rather than by the raw mean and
+    standard deviation: contamination inflates the latter and masks the very
+    points to be detected.  For instance, on a mixture 94% N(0,1) + 6%
+    N(3.7, 0.3), mean/sd standardization flags only about 0.3% of points beyond
+    3 sigma instead of about 6%, the raw standard deviation being inflated to
+    about 1.45, whereas the median and the MAD (breakdown point 50%) are almost
+    unaffected.
 
-    Returns (skew_trim, outlier_frac), NaN si trop peu de points valides.
+    Returns (skew_trim, outlier_frac), NaN when too few valid points remain.
     """
     z = np.asarray(z, dtype=float)
     z = z[np.isfinite(z)]
@@ -86,7 +86,7 @@ def robust_shape_stats(z, trim_frac=ROBUST_TRIM_FRAC, z_threshold=OUTLIER_Z_THRE
     zt = z[(z >= lo) & (z <= hi)]
     skew_trim = float(stats.skew(zt)) if zt.size >= 8 else np.nan
     med = np.median(z)
-    mad = np.median(np.abs(z - med)) * 1.4826  # -> comparable a un ecart-type sous normalite
+    mad = np.median(np.abs(z - med)) * 1.4826  # -> comparable to a standard deviation under normality
     zs = (z - med) / mad if mad > 0 else z - med
     outlier_frac = float(np.mean(np.abs(zs) > z_threshold))
     return skew_trim, outlier_frac
@@ -119,11 +119,9 @@ def vectorized_tcf(params, u_grid, v_grid, J, alpha_fixed, beta_val):
                     = (rho_j*u + v)*X_{j,t+1} + u*eps_{j,t}
     yields the two independent terms |rho_j*u + v|^alpha and |u|^alpha.
 
-    Selection de branche : le test etait `if alpha != 1`, une EGALITE
-    FLOTTANTE.  A alpha = 1 + 1e-9 on tombait donc dans la branche generale
-    ou tan(pi*alpha/2) ~ -6.4e8, ce qui detruit silencieusement le critere.
-    Le test passe par cf_weights.is_alpha_one (tolerance ALPHA1_TOL), et
-    ALPHA_BOUNDS place desormais le domaine d'estimation au-dessus de 1.
+    Branch selection uses cf_weights.is_alpha_one (tolerance ALPHA1_TOL) rather
+    than an exact floating-point comparison, because tan(pi*alpha/2) diverges as
+    alpha -> 1; ALPHA_BOUNDS keeps the estimation domain strictly above 1.
     """
     rhos, varsigmas = params[:J], params[J:2*J]
     alpha = params[2*J] if alpha_fixed is None else alpha_fixed
@@ -140,10 +138,9 @@ def vectorized_tcf(params, u_grid, v_grid, J, alpha_fixed, beta_val):
                 / (1 - np.abs(rhos[j])**alpha)
                 + np.abs(U)**alpha * (1 - 1j * beta_val * np.sign(U) * tan_t))
     else:
-        # BRANCHE alpha = 1 : HORS du domaine de l'Assumption C2 et donc de
-        # la Proposition 2.1.  Inatteignable quand alpha est estime (borne
-        # basse ALPHA_BOUNDS[0] > 1) ; conservee pour alpha IMPOSE, cas du
-        # Panel A (Cauchy) de la Table S.1 du supplement.
+        # Branch alpha = 1: outside Assumption C2 and Proposition 2.1.  It is
+        # never reached when alpha is estimated (ALPHA_BOUNDS[0] > 1) and is used
+        # when alpha is imposed, as in Panel A (Cauchy) of Table S.1.
         for j in range(J):
             exponent += logcf_alpha1_component(rhos[j] * U + V, U,
                                                varsigmas[j], rhos[j], beta_val)
@@ -181,8 +178,8 @@ def fast_objective(params, ecf, u_grid, v_grid, J, alpha_fixed, beta_val,
         if params[j] <= 0:
             return 1e10
     a = params[2*J] if alpha_fixed is None else alpha_fixed
-    # Domaine de l'Assumption C2 quand alpha est libre ; simple validite de la
-    # loi stable quand il est impose (cf. cf_weights.alpha_admissible).
+    # Domain of Assumption C2 when alpha is free; mere validity of the stable
+    # law when it is imposed (see cf_weights.alpha_admissible).
     if not alpha_admissible(a, estimated=alpha_fixed is None):
         return 1e10
 
@@ -204,17 +201,17 @@ def fast_objective(params, ecf, u_grid, v_grid, J, alpha_fixed, beta_val,
 # bounds, maximum number of iterations and tolerances, no data-dependent warm start.
 MDE_STARTS_J2 = (
     (0.75, 0.25, 0.50, 0.50, 1.50),
-    (0.25, 0.75, 0.50, 0.50, 1.50),   # miroir de la precedente
+    (0.25, 0.75, 0.50, 0.50, 1.50),   # mirror of the previous row
     (0.85, 0.45, 0.30, 0.90, 1.40),
-    (0.45, 0.85, 0.90, 0.30, 1.60),   # miroir de la precedente
+    (0.45, 0.85, 0.90, 0.30, 1.60),   # mirror of the previous row
 )
 N_STARTS_DEFAULT = 2
 
 
 def mde_starts(J, fix_alpha, fix_beta, beta_val, n_starts=N_STARTS_DEFAULT):
-    """Points de depart deterministes, en paires miroir (voir MDE_STARTS_J2)."""
+    """Deterministic starting points, in mirror pairs (see MDE_STARTS_J2)."""
     if J != 2:
-        raise NotImplementedError("MDE_STARTS_J2 ne couvre que le cas J = 2")
+        raise NotImplementedError("MDE_STARTS_J2 only covers the case J = 2")
     starts = []
     for row in MDE_STARTS_J2[:max(1, int(n_starts))]:
         x = list(row[:4])
@@ -246,13 +243,13 @@ def canonical_order(raw, J):
 def mde(ecf, starts, u_grid, v_grid, J, bounds, alpha_fixed, beta_val, kappa,
         maxiter=MDE_MAXITER):
     """
-    L'estimateur MDE : minimiseur de `fast_objective` sur le meme critere, la
-    meme grille, le meme kappa, les memes tolerances et les memes departs, que
-    l'entree soit l'echantillon complet ou un bloc.
+    The MDE: minimizer of `fast_objective`, with the same criterion, grid,
+    kappa, tolerances and starting values whether the input is the full sample
+    or a block.
 
-    Les tolerances viennent de cf_weights.lbfgsb_options : `gtol` par defaut de
-    scipy vaut 1e-5 en ABSOLU alors que le critere pondere vaut ~1e-6, si bien
-    que L-BFGS-B s'arretait avant d'avoir bouge dans la direction pi_1.
+    The tolerances come from cf_weights.lbfgsb_options: scipy's default `gtol`
+    (1e-5, absolute) is too loose for a weighted criterion of order 1e-6 and
+    would stop L-BFGS-B before any move along the pi_1 direction.
     """
     best_f, best_x = np.inf, None
     for x0 in starts:
@@ -273,8 +270,8 @@ def mde(ecf, starts, u_grid, v_grid, J, bounds, alpha_fixed, beta_val, kappa,
 
 def estimate_sub(Y_sub, starts, u_grid, v_grid, J, bounds,
                  alpha_fixed, beta_val, kappa, maxiter=MDE_MAXITER):
-    """MDE sur un sous-echantillon -- strictement la meme fonctionnelle que
-    sur l'echantillon complet (cf. `mde`)."""
+    """MDE on a subsample -- exactly the same functional as on the full sample
+    (see `mde`)."""
     try:
         ecf = vectorized_ecf(Y_sub, u_grid, v_grid)
     except Exception:
@@ -482,7 +479,7 @@ class _EngineReparam:
         self.true_params = true_params
         self.kappa = kappa
 
-        # Original-space bounds (estimation unchanged)
+        # Bounds in the original (varsigma) space
         self.bounds = [(0.01, 0.99)] * J + [(0.005, 5.0)] * J
         if not fix_alpha:
             self.bounds.append(ALPHA_BOUNDS)   # (1, 2) strict, Assumption C2

@@ -416,7 +416,7 @@ def format_table_s1(summaries: Dict[str, pd.DataFrame], sample_sizes: Sequence[i
     lines.append(
         r"\footnotesize\textit{Notes:} True parameter values are $\psi_1 = 0.8$, "
         r"$\psi_2 = 0.3$, $\varsigma_1 = 0.7$, $\varsigma_2 = 0.9$.  MRE denotes the "
-        r"mean relative error $\mathbb{E}[|\hat\theta - \theta_0|/|\theta_0|]$.  "
+        r"mean absolute relative error $\mathbb{E}[|\hat\theta - \theta_0|/|\theta_0|]$.  "
         f"Estimation minimizes the discretized criterion (2.14) using {weight_txt}."
     )
     lines.append(r"\end{flushleft}")

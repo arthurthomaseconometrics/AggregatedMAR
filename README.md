@@ -1,6 +1,5 @@
 # Replication package
 
-
 de Truchis, G., Fries, S., and Thomas, A. (2026). *Estimation and prediction of bubbles
 with α-stable aggregates of moving averages*, and its Online Supplement.
 
@@ -47,11 +46,11 @@ Run times measured on a 15-core laptop (macOS, arm64) unless stated otherwise.
 |---|---|---|---|
 | Table S.1 | `table_s1_mc_accuracy.py` | `results_table_s1/` | 3 min |
 | Table S.2 | `table_s2_mc_accuracy.py` | `results_table_s2/` | 3 min |
-| Tables S.3–S.9, Figures S.1–S.5 | `export_s22_reparam.py` | `resultats_reparam/` | per sample size: 14 min (n = 1,000), 27 min (n = 10,000); 33 min (n = 100,000) and 41 min (n = 500,000) on a 30-core server |
+| Tables S.3–S.9, Figures S.1–S.5 | `export_s22_reparam.py` | `results_reparam/` | per sample size: 14 min (n = 1,000), 27 min (n = 10,000); 33 min (n = 100,000) and 41 min (n = 500,000) on a 30-core server |
 | Table S.10 | design of the simulation (constants of `boundary_test/boundary_test_mc.py`) | — | — |
 | Table S.11 | `boundary_test/boundary_test_mc.py` | `boundary_test/results/` | 75 min on 12 cores |
 | Tables S.12–S.13 | `boundary_test/supplement_tables.py` | `boundary_test/results/` | seconds |
-| Section S.4.2, subsampling version of the test | `boundary_test/subsampling_check.py` | `boundary_test/results/` | 8 min on 12 cores |
+| Section S.4.4, subsampling version of the test | `boundary_test/subsampling_check.py` | `boundary_test/results/` | 8 min on 12 cores |
 | Table S.14 | `ovx_estimation/run_ovx_estimation.py`, then `table_ovx_estimation.py` | `ovx_estimation/`, `results_ovx_estimation/` | 1 min |
 | Figure S.6 | `figure_ovx_deconvolution.py` | `results_ovx_deconvolution/` | 1.5 min |
 | Table S.15 | `table_ovx_forecast.py` | `results_ovx_forecast/` | seconds |
@@ -106,7 +105,7 @@ bootstrap and two-sided versions of the test. `boundary_test_mc.py` is self-cont
 cd boundary_test
 python boundary_test_mc.py --reps 2000 --workers 12    # Table S.11, replications.csv
 python supplement_tables.py                            # Tables S.12–S.13
-python subsampling_check.py --reps 500 --workers 12    # Section S.4.2
+python subsampling_check.py --reps 500 --workers 12    # Section S.4.4
 python boundary_test_mc.py --table-only                # rebuild Table S.11 from summary.csv
 ```
 
@@ -117,9 +116,9 @@ daily. Window 23/05/2015–23/05/2025, weekly mean, linear detrend: T = 522
 (`ovx_common.py`).
 
 1. **Estimation** — `ovx_estimation/run_ovx_estimation.py` estimates the GαS, SαS and
-   S1S specifications with `ovx_estimation/stablemixture.py`: HAC weights (Bartlett
-   kernel) computed at the starting point on a 15 × 15 grid, then minimisation of the
-   weighted criterion by L-BFGS-B; Hessian standard errors. The series is centred and
+   S1S specifications with `ovx_estimation/stablemixture.py`: minimum distance
+   estimation on a 15 × 15 grid, computed by L-BFGS-B from an initial guess; Hessian
+   standard errors. The series is centred and
    rescaled to max |Y| = 10 for the estimation. Starting values: the vector `INIT_GAS`
    of the script for GαS, the sequential estimates of
    `ovx_estimation/stable_aggregates.py` for SαS and S1S. It writes
@@ -152,7 +151,7 @@ aggregate and the two weighted components.
 | Folder | Content |
 |---|---|
 | `results_table_s1/`, `results_table_s2/` | full runs of Tables S.1–S.2 |
-| `resultats_reparam/` | `summary_n*.csv`, `meta_n*.json`, `diagnostics_n*.png` for the five sample sizes (n = 100,000 and 500,000 computed on a 30-core server) |
+| `results_reparam/` | `summary_n*.csv`, `meta_n*.json`, `diagnostics_n*.png` for the five sample sizes (n = 100,000 and 500,000 computed on a 30-core server) |
 | `boundary_test/results/` | `replications.csv`, `summary.csv`, `subsampling_check.csv` and the LaTeX tables |
 | `ovx_estimation/`, `results_ovx_*/`, `results_figure1/` | OVX and Figure 1 outputs |
 
@@ -174,5 +173,5 @@ replication_files/
 ├── ovx_estimation/           run_ovx_estimation.py, stablemixture.py, stable_aggregates.py, estimation.csv
 ├── boundary_test/            boundary_test_mc.py, supplement_tables.py, subsampling_check.py, results/
 ├── hpc/                      preflight_check.py, run_table_s1.sh, run_s22.sh, collect_s22.sh
-└── results_*/, resultats_reparam/   stored outputs
+└── results_*/                stored outputs
 ```

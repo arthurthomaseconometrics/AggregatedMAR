@@ -1,7 +1,7 @@
 {
   "T": 522,
   "scale_factor": 0.051404005781474735,
-  "estimator": "MDE, HAC optimal weights computed at the initial guess (step1=False)",
+  "estimator": "MDE computed from an initial guess (step1=False)",
   "sample": "2015-05-23..2025-05-23, weekly mean, linear detrend",
   "python_version": "3.14.7",
   "numpy_version": "2.5.4",

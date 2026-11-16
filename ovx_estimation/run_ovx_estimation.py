@@ -6,9 +6,8 @@ Data: ../data/OVX_History.csv, window 2015-05-23 .. 2025-05-23, weekly mean, lin
 detrend, centred, rescaled so that max|Y| = 10: T = 522.
 
 Estimator: StableMixtureDeconvolution.estimate (stablemixture.py of this folder) with
-step1=False: HAC weights (Bartlett kernel) are computed at the initial guess on a
-15 x 15 grid, then the weighted criterion is minimised by L-BFGS-B.  Hessian standard
-errors from .inference().  Initial guesses: INIT_GAS below for GaS; the sequential
+step1=False: the minimum distance criterion, evaluated on a 15 x 15 grid, is minimised
+by L-BFGS-B from an initial guess.  Hessian standard errors from .inference().  Initial guesses: INIT_GAS below for GaS; the sequential
 (NLS) estimates of stable_aggregates.py for SaS and S1S.  Components are ordered
 psi_1 < psi_2.
 
@@ -115,7 +114,7 @@ def main() -> None:
         print(f"[{spec}] " + ", ".join(f"{p}={d[p]:.4f}" for p in ROWS if not np.isnan(d.get(p, np.nan))), flush=True)
     pd.DataFrame(rows).to_csv(os.path.join(HERE, "estimation.csv"), index=False)
     with open(os.path.join(HERE, "run_config.json"), "w") as f:
-        json.dump(dict(T=len(Y), scale_factor=sf, estimator="MDE, HAC optimal weights computed at the initial guess (step1=False)",
+        json.dump(dict(T=len(Y), scale_factor=sf, estimator="MDE computed from an initial guess (step1=False)",
                        sample="2015-05-23..2025-05-23, weekly mean, linear detrend",
                        python_version=platform.python_version(), numpy_version=np.__version__,
                        scipy_version=scipy.__version__, pandas_version=pd.__version__), f, indent=2)

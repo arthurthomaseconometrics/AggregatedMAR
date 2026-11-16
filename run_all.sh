@@ -32,15 +32,15 @@ if [ "$MODE" = "full" ]; then
     "$PY" table_s2_mc_accuracy.py --n-jobs "$NCORES" --output-dir results_table_s2
     step "Tables S.3-S.9, Figures S.1-S.5 -- subsampling"
     "$PY" export_s22_reparam.py --sample-sizes 500 1000 10000 100000 500000 --M 200 \
-        --n-cores "$NCORES" --skip-existing --output-dir resultats_reparam
+        --n-cores "$NCORES" --skip-existing --output-dir results_reparam
     step "Tables S.11-S.13 -- test of H0: min psi_j = 0"
     (cd boundary_test && "$PY" boundary_test_mc.py --reps 2000 --workers "$NCORES" \
         && "$PY" subsampling_check.py --reps 500 --workers "$NCORES")
 fi
 
-step "Tables S.3-S.9 LaTeX (from resultats_reparam/summary_n*.csv)"
+step "Tables S.3-S.9 LaTeX (from results_reparam/summary_n*.csv)"
 "$PY" export_s22_reparam.py --sample-sizes 500 1000 10000 100000 500000 --M 200 \
-    --tex-only --output-dir resultats_reparam
+    --tex-only --output-dir results_reparam
 step "Tables S.11-S.13 LaTeX (from boundary_test/results/)"
 (cd boundary_test && "$PY" boundary_test_mc.py --table-only && "$PY" supplement_tables.py)
 

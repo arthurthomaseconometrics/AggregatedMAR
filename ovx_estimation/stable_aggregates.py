@@ -39,7 +39,7 @@ class StableAggregates:
             Seed for random generation
         """
         if model_type not in ['discrete', 'continuous']:
-            raise ValueError("model_type doit être 'discrete' ou 'continuous'")
+            raise ValueError("model_type must be 'discrete' or 'continuous'")
             
         self.model_type = model_type
         
@@ -50,7 +50,7 @@ class StableAggregates:
         os.makedirs(self.results_dir, exist_ok=True)
 
     
-    # --- Fonctions pour la simulation et la caractérisation des distributions alpha-stables ---
+    # --- Simulation and characterization of alpha-stable distributions ---
 
     
     def simulate_alpha_stable(self, n: int, alpha: float, beta: float, sigma: float = 1.0, 
@@ -113,9 +113,9 @@ class StableAggregates:
         numpy.ndarray
             Empirical characteristic function evaluated at points u (and v if specified)
         """
-        if v is None:  # Cas univarié
+        if v is None:  # Univariate case
             return np.mean(np.exp(1j * u[:, np.newaxis] * X), axis=1)
-        else:  # Cas bivarié
+        else:  # Bivariate case
             return np.mean(np.exp(1j * (u * X[1:] + v * X[:-1])))
 
     
@@ -268,7 +268,7 @@ class StableAggregates:
         return g_lambda
 
 
-    # --- Fonctions pour la génération de processus AR(1) non-causaux et leurs agrégations ---
+    # --- Generation of noncausal AR(1) processes and their aggregates ---
 
     def generate_noncausal_ar1(self, n: int, phi: float, alpha: float, beta: float, 
                             sigma: float = 1.0, burnin: int = 1000, max_lag: int = 500) -> np.ndarray:
@@ -299,13 +299,13 @@ class StableAggregates:
         """
         total_len = n + burnin
         
-        # Générer les innovations alpha-stables
+        # Generate the alpha-stable innovations
         innovations = self.simulate_alpha_stable(total_len + max_lag, alpha, beta, sigma)
         
-        # Initialiser le processus comme une somme d'innovations pondérées (représentation MA)
+        # Initialise the process as a weighted sum of innovations (MA representation)
         X = np.zeros(total_len)
         
-        # Construire le processus à partir de la représentation MA(∞)
+        # Build the process from its MA(infinity) representation
         # X_t = ∑_j=0^∞ φ^j ε_{t+j}
         for t in range(total_len):
             weighted_sum = 0
@@ -314,7 +314,7 @@ class StableAggregates:
                     weighted_sum += (phi ** j) * innovations[t + j]
             X[t] = weighted_sum
         
-        # Retourner la série sans la période de chauffe
+        # Return the series without the burn-in period
         return X[burnin:]
 
 
@@ -482,15 +482,14 @@ class StableAggregates:
         tuple
             (aggregated_process, list_of_components, list_of_phis)
         """
-        # Générer des phis selon la distribution beta transformée
-        # Distribution sur [0, 1] seulement (au lieu de [-1, 1])
+        # Draw the phis from the transformed beta distribution
+        # Distribution on [0, 1] only (not [-1, 1])
         phis = np.random.beta(a, b, n_components)
         
-        # Poids égaux pour chaque composante (approximation de l'intégrale)
+        # Equal weights for each component (approximation of the integral)
         pis = np.ones(n_components) / n_components
         
-        # Générer le processus agrégé en utilisant la fonction discrète
-        # CORRECTION: utiliser la bonne signature avec les paramètres nommés
+        # Generate the aggregated process with the discrete-mixture generator
         aggregated, components = self.generate_discrete_mixture(
             n=n, 
             phis=phis, 
@@ -506,7 +505,7 @@ class StableAggregates:
         return aggregated, components, phis
     
 
-    # --- Méthodes pour l'estimation séquentielle (adaptées pour discret et continu) ---
+    # --- Sequential estimation (discrete and continuous mixtures) ---
 
 
     def estimate_alpha_beta(self, X: np.ndarray, step: float = 0.01, m: float = 1.0, 
@@ -680,7 +679,7 @@ class StableAggregates:
                                     u0: float = 0.01, max_iter: int = 200,
                                     method: str = 'md') -> Dict[str, Any]:
         """
-        Estimates parameters of a discrete mixture using either improved NLS or
+        Estimates parameters of a discrete mixture using either NLS or
         original minimum distance method.
         
         Parameters:
@@ -698,7 +697,7 @@ class StableAggregates:
         max_iter : int
             Maximum iterations for optimization
         method : str
-            Estimation method: 'nls' for improved NLS or 'md' for minimum distance
+            Estimation method: 'nls' for NLS or 'md' for minimum distance
             
         Returns:
         --------
@@ -910,7 +909,7 @@ class StableAggregates:
                 lambda_vals: Optional[np.ndarray] = None, 
                 u0: float = 0.01, max_iter: int = 200) -> Dict[str, Any]:
         """
-        Estimates parameters of a discrete mixture using improved Nonlinear Least Squares
+        Estimates parameters of a discrete mixture using Nonlinear Least Squares
         with varsigma_j = c * pi_j parameterization for better numerical stability.
         
         This implements the reparameterization strategy from the paper:
@@ -1279,7 +1278,7 @@ class StableAggregates:
         verbose : bool
             If True, displays progress messages
         method : str
-            Estimation method: 'nls' for improved NLS or 'md' for minimum distance
+            Estimation method: 'nls' for NLS or 'md' for minimum distance
         
         Returns:
         ---------
@@ -1449,8 +1448,9 @@ class StableAggregates:
                 step: float = 0.01, m: float = 1.0) -> pd.DataFrame:
         """
         Calculates inference statistics for the estimated parameters from sequential estimation.
-        
-        [Docstring inchangé...]
+
+        Returns a DataFrame with, for each parameter, the estimate, its standard
+        error, the t-statistic and a (1 - alpha) confidence interval.
         """
         if estimated_params is None:
             raise ValueError("estimated_params must be provided. Run sequential_estimation first.")
@@ -1462,7 +1462,7 @@ class StableAggregates:
         # Initialize results list
         results_list = []
         
-        # Calculate confidence level label (fix the decimal issue)
+        # Confidence level label
         ci_level = int(100*(1-alpha))
         
         # 1. INFERENCE FOR ALPHA AND BETA (from Kogon-Williams estimation)
@@ -2177,7 +2177,7 @@ class StableAggregates:
             return np.diag(variances)
 
 
-    # --- Méthodes pour les simulations Monte Carlo ---
+    # --- Monte Carlo simulations ---
 
 
     def mcsingle(self, sim_idx: int, param_idx: int, params: Dict[str, Any], 
@@ -2253,7 +2253,7 @@ class StableAggregates:
             
         except Exception as e:
             if verbose:
-                print(f"Erreur dans la simulation {sim_idx}, paramètres {param_idx}: {e}")
+                print(f"Error in simulation {sim_idx}, parameter set {param_idx}: {e}")
             # Return result with error
             result = {
                 'simulation': sim_idx,
@@ -2325,7 +2325,7 @@ class StableAggregates:
                     params['c'] = np.sum(params['varsigmas'])
                     params['pis'] = params['varsigmas'] / params['c']
                     
-            else:  # continuous (unchanged)
+            else:  # continuous
                 parameter_sets = [
                     {
                         'alpha': 1.5,
@@ -3042,7 +3042,7 @@ class StableAggregates:
         return param_results
 
 
-    # --- Méthodes de test finales ---
+    # --- Test methods ---
 
 
     def smart_demo(self, n: int = 1000, params: Optional[Dict[str, Any]] = None, 
@@ -3173,30 +3173,30 @@ class StableAggregates:
         """
         plt.figure(figsize=(14, 8))
         
-        # Processus agrégé
+        # Aggregated process
         plt.subplot(2, 1, 1)
-        plt.plot(Y, label='Processus agrégé')
+        plt.plot(Y, label='Aggregated process')
         
-        # Titre avec paramètres
+        # Title with parameters
         alpha = true_params['alpha']
         beta = true_params['beta']
         c = true_params['c']
         
         if self.model_type == 'discrete':
-            title = f'Processus agrégé alpha-stable discret (α={alpha}, β={beta}, c={c})'
+            title = f'Discrete alpha-stable aggregated process (α={alpha}, β={beta}, c={c})'
         else:
             a = true_params['a']
             b = true_params['b']
-            title = f'Processus agrégé alpha-stable beta (α={alpha}, β={beta}, c={c}, a={a}, b={b})'
+            title = f'Beta alpha-stable aggregated process (α={alpha}, β={beta}, c={c}, a={a}, b={b})'
         
         plt.title(title)
         plt.legend()
         plt.grid(True, alpha=0.3)
         
-        # Composantes individuelles
+        # Individual components
         plt.subplot(2, 1, 2)
         
-        # Limiter le nombre de composantes affichées
+        # Limit the number of components displayed
         max_components_to_show = 5
         n_components_to_show = min(len(components), max_components_to_show)
         
@@ -3206,15 +3206,15 @@ class StableAggregates:
                 pi = true_params['pis'][j]
                 label = f'Composante {j+1} (φ={phi:.2f}, π={pi:.2f})'
             else:
-                # Pour le modèle continu, afficher seulement l'index
+                # For the continuous model, show only the index
                 label = f'Composante {j+1}'
             
             plt.plot(components[j], alpha=0.7, label=label)
         
         if len(components) > max_components_to_show:
-            plt.title(f'Premières {max_components_to_show} composantes individuelles (sur {len(components)} total)')
+            plt.title(f'First {max_components_to_show} individual components (out of {len(components)})')
         else:
-            plt.title('Composantes individuelles')
+            plt.title('Individual components')
         
         plt.legend()
         plt.grid(True, alpha=0.3)
@@ -3222,9 +3222,9 @@ class StableAggregates:
         plt.tight_layout()
         plt.show()
         
-        # Graphique de comparaison des paramètres
+        # Parameter comparison plot
         if self.model_type == 'continuous':
-            # Pour le modèle continu, tracer la distribution beta
+            # For the continuous model, plot the beta distribution
             self._plot_beta_comparison(true_params, estimated_params)
 
     
@@ -3247,19 +3247,19 @@ class StableAggregates:
         b_true = true_params['b']
         density_true = self.beta_pdf(phi, a_true, b_true)
         
-        # Distribution estimée
+        # Estimated distribution
         a_est = estimated_params['a']
         b_est = estimated_params['b']
         density_est = self.beta_pdf(phi, a_est, b_est)
         
         plt.figure(figsize=(10, 6))
         plt.plot(phi, density_true, 'b-', linewidth=2, label=f'Beta vraie (a={a_true:.2f}, b={b_true:.2f})')
-        plt.plot(phi, density_est, 'r--', linewidth=2, label=f'Beta estimée (a={a_est:.2f}, b={b_est:.2f})')
+        plt.plot(phi, density_est, 'r--', linewidth=2, label=f'Estimated beta (a={a_est:.2f}, b={b_est:.2f})')
         
         plt.grid(True, alpha=0.3)
         plt.xlabel(r'$\phi$')
-        plt.ylabel(r'Densité $\pi(\phi)$')
-        plt.title('Comparaison des distributions beta')
+        plt.ylabel(r'Density $\pi(\phi)$')
+        plt.title('Comparison of beta distributions')
         plt.legend()
         plt.tight_layout()
         plt.show()

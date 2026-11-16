@@ -40,7 +40,7 @@ TEX_SYMBOL = {
 }
 
 TABLE_NOTE = (
-    r"Minimum distance estimator with HAC weights computed at the initial guess, on the "
+    r"Minimum distance estimator computed from an initial guess given by the sequential regression estimates, on the "
     r"weekly OVX, $T = 522$; the components are ordered $\psi_1 < \psi_2$. Standard errors "
     r"are the Hessian-based asymptotic standard errors; a dash marks a standard error that "
     r"is not available. The $t$-statistics test the null hypothesis that each parameter "

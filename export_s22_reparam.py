@@ -42,7 +42,7 @@ from latex_table_export import fmt_n, format_design_table, format_detail_table, 
 from subsampling_reparam import (N_STARTS_DEFAULT, OUTLIER_Z_THRESHOLD, OV_BLOCKS_TARGET,
                                  ROBUST_TRIM_FRAC, _EngineReparam)
 
-OUTPUT_DIR_DEFAULT = "resultats_reparam"
+OUTPUT_DIR_DEFAULT = "results_reparam"
 ROBUST_TRIM_FRAC_PCT = int(round(ROBUST_TRIM_FRAC * 100))
 OUTLIER_Z_THRESHOLD_STR = ("%g" % OUTLIER_Z_THRESHOLD)
 PARAM_ORDER = ["rho_1", "rho_2", "sigma", "pi_1", "alpha"]

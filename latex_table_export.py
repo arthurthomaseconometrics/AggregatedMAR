@@ -21,11 +21,11 @@ SUMMARY_SYMBOL = {
     "sigma": r"$\sigma$", "pi_1": r"$\pi_1$", "alpha": r"$\alpha$",
 }
 
-_N_TO_B = {}  # renseigne par set_block_sizes() ou passe explicitement
+_N_TO_B = {}  # filled by set_block_sizes() or passed explicitly
 
 
 def fmt_n(n: int) -> str:
-    """1000 -> '1,000' (convention LaTeX '{,}' du document)."""
+    """1000 -> '1,000' (LaTeX '{,}' convention of the document)."""
     return f"{n:,}".replace(",", "{,}")
 
 
@@ -37,23 +37,23 @@ def _f(x: float, dp: int = 3) -> str:
 
 
 def _f_signed_math(x: float, dp: int = 2) -> str:
-    """Pour Dev.Mean/Skew/Kurt : toujours entre $...$, avec signe explicite."""
+    """For Dev.Mean/Skew/Kurt: always within $...$, with an explicit sign."""
     if x is None or (isinstance(x, float) and np.isnan(x)):
         return "--"
     return f"${x:.{dp}f}$"
 
 
 # =============================================================================
-# Tableau detaille (un par n) -- reproduit tab:subsampling_n*, tab:restr_n*,
+# Detailed table (one per n) -- reproduces tab:subsampling_n*, tab:restr_n*,
 # tab:restr_true_n*
 # =============================================================================
 
 def format_detail_table(df: pd.DataFrame, n: int, b: int, M: int,
                          caption: str, label: str, notes: str) -> str:
     """
-    df : DataFrame produit par Engine.table(agg) -- colonnes Parameter, True,
+    df : DataFrame produced by Engine.table(agg) -- columns Parameter, True,
          Avg Est., Std Est., Dev.Mean, Dev.Std, Ratio, Skew, Kurt, SW Rej.,
-         JB Rej., qCov90, nCov90, qCov95, nCov95 (ordre natif de l'engine).
+         JB Rej., qCov90, nCov90, qCov95, nCov95 (native order of the engine).
          If `Skew.Trim`/`Outlier%` are present (subsampling_reparam.robust_shape_stats),
          two robust columns are inserted after Kurt: trimmed skewness and the share of
          extreme standardized points (median/MAD).
@@ -120,10 +120,10 @@ def format_detail_table(df: pd.DataFrame, n: int, b: int, M: int,
 def format_summary_table(dfs_by_n: Dict[int, pd.DataFrame], param_order: Sequence[str],
                           caption: str, label: str, notes: str) -> str:
     """
-    dfs_by_n : {n: DataFrame}, un DataFrame par taille (memes colonnes que
-               format_detail_table). Colonnes montrees : True, Avg Est.,
+    dfs_by_n : {n: DataFrame}, one DataFrame per sample size (same columns as
+               format_detail_table).  Columns shown: True, Avg Est.,
                Std Est., Dev.Mean, Skew, Kurt, qCov90, qCov95, nCov90, nCov95
-               (Dev.Std, SW/JB Rej. omis, comme dans le document publie).
+               (Dev.Std and SW/JB Rej. omitted, as in the paper).
     """
     lines = [
         r"\begin{table}[!h]",
@@ -175,8 +175,8 @@ def format_summary_table(dfs_by_n: Dict[int, pd.DataFrame], param_order: Sequenc
 
 
 # =============================================================================
-# Figure diagnostique (meme structure pour les trois familles reparam/restr/
-# restr_true -- seul le chemin de l'image et la legende changent)
+# Diagnostic figure (same structure for the three families reparam/restr/
+# restr_true -- only the image path and the caption change)
 # =============================================================================
 
 def format_figure(image_path: str, caption: str, label: str) -> str:
@@ -191,8 +191,8 @@ def format_figure(image_path: str, caption: str, label: str) -> str:
 
 
 # =============================================================================
-# Table de conception (tab:mc_design) -- documente le design complet a 6
-# tailles meme quand seules 3 sont detaillees en profondeur.
+# Design table (tab:mc_design) -- documents the full design, including the
+# sample sizes that are not detailed in their own table.
 # =============================================================================
 
 def format_design_table(sample_sizes: Sequence[int], b_exponent: float, M: int) -> str:
