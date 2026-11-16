@@ -122,7 +122,7 @@ daily. Window 23/05/2015–23/05/2025, weekly mean, linear detrend: T = 522
    rescaled to max |Y| = 10 for the estimation. It writes
    `ovx_estimation/estimation.csv`, which all the other OVX scripts read.
 2. **Table S.14** — `table_ovx_estimation.py` formats `estimation.csv`.
-3. **Filtering (Figure S.6)** — dual MCMC filter of de Truchis, Thomas and Vaudrée
+3. **Filtering (Figure S.6)** — particle MCMC smoother of de Truchis, Thomas and Vaudrée
    (2026), 1,000 particles, window 5, seed 11, GαS estimates.
 4. **Forecast (Table S.15, Figures 2, S.7–S.8)** — pattern-matching forecast at the
    2020-01-05 cut-off (m = 20, horizon 20, positive bubble), GαS estimates; risk

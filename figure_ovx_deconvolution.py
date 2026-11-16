@@ -4,7 +4,7 @@ Figure S.6 of the Online Supplement of de Truchis, Fries and Thomas (2026): deco
 from the G-alpha-S two-component model (Section S.5.2).
 
 Three stacked panels: the observed detrended OVX series, followed by the two
-latent components filtered with the dual MCMC procedure of de Truchis, Thomas and Vaudree (2026)
+latent components filtered with the particle MCMC smoother of de Truchis, Thomas and Vaudree (2026)
 (`stablemixture.StableMixtureDeconvolution.mcmc_filter`).
 
 Outputs (results_ovx_deconvolution/)
