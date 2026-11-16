@@ -119,9 +119,7 @@ daily. Window 23/05/2015–23/05/2025, weekly mean, linear detrend: T = 522
    S1S specifications with `ovx_estimation/stablemixture.py`: minimum distance
    estimation on a 15 × 15 grid, computed by L-BFGS-B from an initial guess; Hessian
    standard errors. The series is centred and
-   rescaled to max |Y| = 10 for the estimation. Starting values: the vector `INIT_GAS`
-   of the script for GαS, the sequential estimates of
-   `ovx_estimation/stable_aggregates.py` for SαS and S1S. It writes
+   rescaled to max |Y| = 10 for the estimation. It writes
    `ovx_estimation/estimation.csv`, which all the other OVX scripts read.
 2. **Table S.14** — `table_ovx_estimation.py` formats `estimation.csv`.
 3. **Filtering (Figure S.6)** — dual MCMC filter of de Truchis, Thomas and Vaudrée
